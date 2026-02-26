@@ -8,3 +8,6 @@ venv/
 .vscode/
 .idea/
 .DS_Store
+linkedin_session.json
+linkedin_login.py
+test_linkedin.py
