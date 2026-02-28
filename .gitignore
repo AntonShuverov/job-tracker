@@ -11,3 +11,6 @@ venv/
 linkedin_session.json
 linkedin_login.py
 test_linkedin.py
+hh_session.json
+hh_login.py
+test_hh_apply.py
