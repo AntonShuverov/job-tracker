@@ -463,6 +463,8 @@ async def batch_parse(client):
             for msg in messages:
                 if not msg.text:
                     continue
+                if msg.date.year < 2026:
+                    continue
                 total_msgs += 1
                 tg_link = make_tg_link(username, msg.id)
                 logger.info(f"\n📝 #{total_msgs}")
