@@ -1,6 +1,11 @@
 """
-Job Tracker v1 — Парсинг вакансий из Telegram → Notion
+Job Tracker v2 — Парсинг вакансий из Telegram → Notion
 Telethon + Qwen AI + Notion + LinkedIn (Playwright) + Cover Letters
+
+Исправления v2:
+- Дедупликация по URL вакансии (не по названию должности)
+- Keepalive / автореконнект Telegram клиента для стабильной работы на сервере
+- Фильтрация: записываем только Product Manager / Product Owner вакансии
 """
 
 import os
@@ -11,6 +16,7 @@ import logging
 from typing import Optional
 
 from telethon import TelegramClient, events
+from telethon.errors import SessionPasswordNeededError, FloodWaitError
 import requests
 from bs4 import BeautifulSoup
 
@@ -34,12 +40,31 @@ WEB_HEADERS = {
     "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8",
 }
 
-# Загружаем резюме
+# ── Загружаем резюме ──
 RESUME_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resume.txt")
 RESUME_TEXT = ""
 if os.path.exists(RESUME_PATH):
     with open(RESUME_PATH, "r", encoding="utf-8") as f:
         RESUME_TEXT = f.read()
+
+# ══════════════════════════════════════════════════════
+# FIX 3: Фильтр — только PM/PO вакансии
+# Если в названии должности нет ни одного из ключевых слов → пропускаем
+# ══════════════════════════════════════════════════════
+PM_KEYWORDS = [
+    "product manager", "продакт менеджер", "продакт-менеджер",
+    "product owner", "менеджер продукта", "pm ", " pm", "product lead",
+    "head of product", "vp of product", "chief product",
+    "продуктовый менеджер", "продуктовый аналитик", "product analyst",
+]
+
+def is_pm_vacancy(title: str) -> bool:
+    """Проверяет, относится ли вакансия к Product Management."""
+    if not title:
+        return False
+    title_lower = title.lower()
+    return any(kw in title_lower for kw in PM_KEYWORDS)
+
 
 # ── Playwright Async ──
 _pw = None
@@ -239,12 +264,83 @@ def generate_cover_letter(vacancy):
     return None, None
 
 
-# ── Notion ──
+# ══════════════════════════════════════════════════════
+# FIX 1: Дедупликация по URL вакансии (не по названию)
+# ══════════════════════════════════════════════════════
 
-NOTION_HEADERS = {"Authorization": f"Bearer {NOTION_TOKEN}", "Content-Type": "application/json", "Notion-Version": "2022-06-28"}
+NOTION_HEADERS = {
+    "Authorization": f"Bearer {NOTION_TOKEN}",
+    "Content-Type": "application/json",
+    "Notion-Version": "2022-06-28"
+}
 SCHEDULE_MAP = {"офис": "Офис", "office": "Офис", "удалёнка": "Удалёнка", "удаленка": "Удалёнка", "remote": "Удалёнка", "гибрид": "Гибрид", "hybrid": "Гибрид", "не указано": "Не указано"}
 VALID_SCHEDULES = {"Офис", "Удалёнка", "Гибрид", "Не указано"}
 RELEVANCE_MAP = {"высокая": "🔥 Высокая", "средняя": "👍 Средняя", "низкая": "🤷 Низкая"}
+
+
+def normalize_url(url: str) -> str:
+    """Нормализует URL для сравнения: убирает query-параметры и trailing slash."""
+    if not url:
+        return ""
+    # Убираем query params и fragment
+    url = url.split("?")[0].split("#")[0]
+    # Убираем trailing slash
+    url = url.rstrip("/")
+    return url.lower()
+
+
+def check_duplicate_by_url(vacancy_url: str, tg_link: str) -> bool:
+    """
+    FIX 1: Проверяет дубликат по URL вакансии или по ссылке на ТГ-пост.
+    Сначала ищет по vacancy_url (hh.ru, career page и т.д.),
+    затем по ссылке на ТГ-пост как fallback.
+    """
+    normalized = normalize_url(vacancy_url)
+    tg_normalized = normalize_url(tg_link)
+
+    # Нет ни одного URL для проверки — не можем определить дубликат
+    if not normalized and not tg_normalized:
+        return False
+
+    try:
+        # Поиск по "Ссылка на вакансию"
+        if normalized:
+            resp = requests.post(
+                f"https://api.notion.com/v1/databases/{NOTION_DATABASE_ID}/query",
+                headers=NOTION_HEADERS,
+                json={
+                    "filter": {
+                        "property": "Ссылка на вакансию",
+                        "url": {"equals": normalized}
+                    },
+                    "page_size": 1
+                },
+                timeout=15
+            )
+            if resp.status_code == 200 and len(resp.json().get("results", [])) > 0:
+                return True
+
+        # Fallback: поиск по ссылке на ТГ-пост
+        if tg_normalized:
+            resp = requests.post(
+                f"https://api.notion.com/v1/databases/{NOTION_DATABASE_ID}/query",
+                headers=NOTION_HEADERS,
+                json={
+                    "filter": {
+                        "property": "Пост в ТГ",
+                        "url": {"equals": tg_normalized}
+                    },
+                    "page_size": 1
+                },
+                timeout=15
+            )
+            if resp.status_code == 200 and len(resp.json().get("results", [])) > 0:
+                return True
+
+    except Exception as e:
+        logger.error(f"Дедупликация: {e}")
+
+    return False
 
 
 def create_notion_page(vacancy, channel_name, tg_link="", cover_letter=None, relevance=None):
@@ -300,18 +396,6 @@ def create_notion_page(vacancy, channel_name, tg_link="", cover_letter=None, rel
     return False
 
 
-def check_duplicate(title):
-    try:
-        resp = requests.post(f"https://api.notion.com/v1/databases/{NOTION_DATABASE_ID}/query",
-            headers=NOTION_HEADERS,
-            json={"filter": {"property": "Должность", "title": {"equals": title}}, "page_size": 1}, timeout=15)
-        if resp.status_code == 200:
-            return len(resp.json().get("results", [])) > 0
-    except Exception:
-        pass
-    return False
-
-
 def make_tg_link(ch, msg_id):
     return f"https://t.me/{ch.lstrip('@').lstrip('/')}/{msg_id}"
 
@@ -322,14 +406,22 @@ async def process_message(text, channel_name, tg_link=""):
     urls = extract_urls(text)
     extra_info = await fetch_extra_info(urls) if urls else ""
 
-    # 1. Парсим вакансию
+    # 1. Парсим вакансию через AI
     vacancy = parse_vacancy_with_ai(text, extra_info)
     if not vacancy:
         return False
 
     title = vacancy.get("title", "")
-    if title and check_duplicate(title):
-        logger.info(f"  ⏭️  Дубликат: {title}")
+
+    # ── FIX 3: Фильтр — только PM/PO вакансии ──
+    if not is_pm_vacancy(title):
+        logger.info(f"  ⏭️  Не PM: «{title}» — пропускаю")
+        return False
+
+    # ── FIX 1: Дедупликация по URL ──
+    vacancy_url = vacancy.get("vacancy_url") or vacancy.get("linkedin_url") or ""
+    if check_duplicate_by_url(vacancy_url, tg_link):
+        logger.info(f"  ⏭️  Дубликат (URL): {title}")
         return False
 
     # 2. Генерируем сопроводительное
@@ -340,6 +432,24 @@ async def process_message(text, channel_name, tg_link=""):
 
     # 3. Записываем в Notion
     return create_notion_page(vacancy, channel_name, tg_link, cover_letter, relevance)
+
+
+# ══════════════════════════════════════════════════════
+# FIX 2: Keepalive + автореконнект для стабильной работы на сервере
+# ══════════════════════════════════════════════════════
+
+async def keepalive_loop(client):
+    """
+    Периодически пингует Telegram чтобы соединение не разрывалось.
+    Запускается параллельно с live_monitor.
+    """
+    while True:
+        try:
+            await asyncio.sleep(300)  # каждые 5 минут
+            await client.get_me()
+            logger.debug("💓 Keepalive ping OK")
+        except Exception as e:
+            logger.warning(f"⚠️  Keepalive ошибка: {e}")
 
 
 async def batch_parse(client):
@@ -359,6 +469,9 @@ async def batch_parse(client):
                 if await process_message(msg.text, channel_name, tg_link):
                     total_added += 1
                 await asyncio.sleep(1)
+        except FloodWaitError as e:
+            logger.warning(f"⏳ FloodWait {channel_name}: ждём {e.seconds}с")
+            await asyncio.sleep(e.seconds)
         except Exception as e:
             logger.error(f"❌ {channel_name}: {e}")
     logger.info(f"\n{'='*50}\n📊 {total_msgs} сообщений → {total_added} вакансий\n{'='*50}")
@@ -378,6 +491,7 @@ async def live_monitor(client):
     if not channels:
         logger.error("Нет каналов!")
         return
+
     @client.on(events.NewMessage(chats=channels))
     async def handler(event):
         if not event.text:
@@ -387,24 +501,54 @@ async def live_monitor(client):
         tg_link = make_tg_link(un, event.id)
         logger.info(f"📩 Новое в {un}")
         await process_message(event.text, un, tg_link)
+
     logger.info("\n🔴 LIVE-мониторинг (Ctrl+C для выхода)")
-    await client.run_until_disconnected()
+
+    # FIX 2: Запускаем keepalive параллельно
+    keepalive_task = asyncio.create_task(keepalive_loop(client))
+    try:
+        await client.run_until_disconnected()
+    finally:
+        keepalive_task.cancel()
+        try:
+            await keepalive_task
+        except asyncio.CancelledError:
+            pass
 
 
 async def main():
-    required = {"TELEGRAM_API_ID": TELEGRAM_API_ID, "TELEGRAM_API_HASH": TELEGRAM_API_HASH,
-                "QWEN_API_KEY": QWEN_API_KEY, "NOTION_TOKEN": NOTION_TOKEN, "NOTION_DATABASE_ID": NOTION_DATABASE_ID}
+    required = {
+        "TELEGRAM_API_ID": TELEGRAM_API_ID,
+        "TELEGRAM_API_HASH": TELEGRAM_API_HASH,
+        "QWEN_API_KEY": QWEN_API_KEY,
+        "NOTION_TOKEN": NOTION_TOKEN,
+        "NOTION_DATABASE_ID": NOTION_DATABASE_ID,
+    }
     missing = [k for k, v in required.items() if not v]
     if not TG_CHANNELS:
         missing.append("TG_CHANNELS")
     if missing:
         logger.error("❌ Не заданы: " + ", ".join(missing))
         return
+
     if RESUME_TEXT:
         logger.info("📄 Резюме загружено — сопроводительные будут генерироваться")
     else:
         logger.warning("⚠️  resume.txt не найден — без сопроводительных")
-    client = TelegramClient("job_tracker_session", TELEGRAM_API_ID, TELEGRAM_API_HASH)
+
+    logger.info(f"🎯 Фильтр PM: {', '.join(PM_KEYWORDS[:5])}... ({len(PM_KEYWORDS)} ключевых слов)")
+
+    # FIX 2: connection_retries + retry_delay для автореконнекта
+    client = TelegramClient(
+        "job_tracker_session",
+        TELEGRAM_API_ID,
+        TELEGRAM_API_HASH,
+        connection_retries=10,       # повторных попыток при обрыве
+        retry_delay=5,               # секунд между попытками
+        auto_reconnect=True,         # автоматический реконнект
+        request_retries=5,           # повторов для каждого запроса
+    )
+
     async with client:
         me = await client.get_me()
         logger.info(f"✅ Telegram: {me.first_name} (@{me.username})")
@@ -412,6 +556,7 @@ async def main():
             await live_monitor(client)
         else:
             await batch_parse(client)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
