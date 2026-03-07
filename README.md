@@ -1,258 +1,125 @@
-# 🤖 Job Tracker — AI-Powered Vacancy Parser
+# 🎯 Job Tracker
 
-> Автоматический сбор вакансий из Telegram, LinkedIn и hh.ru с AI-анализом релевантности и генерацией сопроводительных писем → Notion
-
-![Python](https://img.shields.io/badge/Python-3.13-blue?logo=python&logoColor=white)
-![Notion](https://img.shields.io/badge/Notion-API-black?logo=notion&logoColor=white)
-![Telegram](https://img.shields.io/badge/Telegram-MTProto-26A5E4?logo=telegram&logoColor=white)
-![AI](https://img.shields.io/badge/AI-Qwen_Turbo-orange)
-![License](https://img.shields.io/badge/license-MIT-green)
+Система автоматического сбора вакансий → AI-анализ → Notion → автоотклик
 
 ---
 
-## 🎯 Что это
+## Что делает
 
-Система автоматического поиска работы. Парсит вакансии из нескольких источников, анализирует их через AI, оценивает релевантность под твоё резюме, генерирует персональные сопроводительные письма и сохраняет всё в Notion. На hh.ru — автоматически откликается.
-
-**Вместо**: ручного просмотра десятков каналов и сайтов каждый день  
-**Получаешь**: готовую базу вакансий с оценкой 🔥/👍/🤷 и письмами в один клик
+1. **Собирает** вакансии из Telegram-каналов, LinkedIn и hh.ru
+2. **Анализирует** через Qwen AI — извлекает должность, компанию, зарплату, формат работы
+3. **Оценивает релевантность** 🔥 / 👍 / 🤷 по твоему резюме
+4. **Генерирует сопроводительное письмо** с цифрами из резюме под каждую вакансию
+5. **Сохраняет в Notion** с дедупликацией по URL
+6. **Автоматически откликается** на hh.ru
 
 ---
 
-## ✨ Возможности
+## Скрипты
 
-| Функция | Описание |
+| Скрипт | Что делает |
 |---|---|
-| 📡 Telegram-каналы | Парсит 7+ каналов с вакансиями, извлекает структурированные данные |
-| 💼 LinkedIn посты | Ищет посты "ищу продакта" и аналогичные через Playwright |
-| 🏢 hh.ru API | Поиск IT-вакансий по ролям и регионам через официальный API |
-| 🤖 AI-анализ | Qwen Turbo извлекает поля, оценивает релевантность, пишет письма |
-| ✉️ Автоотклик | Playwright автоматически откликается на hh.ru с письмом |
-| 🔍 Дедупликация | По URL — одна вакансия записывается только один раз |
-| 📊 Notion база | Все вакансии в одном месте со статусами, фильтрами и сортировкой |
+| `run.py` | Парсинг Telegram-каналов → Notion |
+| `hh_apply.py` | Поиск вакансий на hh.ru + автоотклик с AI-письмом |
+| `hh_parser.py` | Поиск вакансий на hh.ru → Notion (без отклика) |
+| `linkedin_posts.py` | Парсинг LinkedIn постов → Notion |
+| `cover_letter.py` | Догенерация писем для вакансий уже в Notion |
+
+> ⚠️ LinkedIn работает только с зарубежного сервера или через VPN — в РФ заблокирован.
 
 ---
 
-## 🏗️ Архитектура
-
-```
-┌─────────────────────┐     ┌──────────────────────┐     ┌────────────────┐
-│      Источники       │────▶│     Qwen AI Engine    │────▶│     Notion     │
-│                     │     │                      │     │                │
-│  • ТГ-каналы (7+)   │     │  • Парсинг текста    │     │  • Вакансии    │
-│  • LinkedIn посты   │     │  • Извлечение полей  │     │  • Статусы     │
-│  • LinkedIn поиск   │     │  • Оценка 🔥/👍/🤷   │     │  • Письма      │
-│  • hh.ru API        │     │  • Сопроводительные  │     │  • Контакты    │
-│  • Career pages     │     │  • Автоотклик        │     │  • Даты        │
-└─────────────────────┘     └──────────────────────┘     └────────────────┘
-```
-
----
-
-## 📁 Структура проекта
-
-```
-job_tracker/
-├── run.py                # Точка входа: запуск ТГ-парсера
-├── tg_parser.py          # Ядро: Telegram + Web scraping → AI → Notion
-├── hh_parser.py          # Поиск IT-вакансий на hh.ru → Notion
-├── hh_apply.py           # Автоотклик на hh.ru с сопроводительными письмами
-├── linkedin_posts.py     # Парсинг постов LinkedIn с вакансиями
-├── linkedin_parser.py    # Поиск вакансий на LinkedIn Jobs
-├── cover_letter.py       # Догенерация писем для существующих вакансий
-├── hh_config.py          # Настройки поиска hh.ru
-├── resume.txt            # ❌ не в репо (добавь своё — см. Setup)
-├── .env                  # ❌ не в репо (см. .env.example)
-├── .env.example          # Шаблон переменных окружения
-└── requirements.txt      # Зависимости
-```
-
----
-
-## 🚀 Быстрый старт
-
-### 1. Клонируй репо
+## Установка
 
 ```bash
 git clone https://github.com/AntonShuverov/job-tracker.git
 cd job-tracker
-```
 
-### 2. Установи зависимости
-
-```bash
 pip install -r requirements.txt
-playwright install chromium   # для LinkedIn и hh.ru автоотклика
-```
+playwright install chromium
 
-### 3. Настрой окружение
-
-```bash
 cp .env.example .env
+# Заполни .env своими ключами
 ```
 
-Заполни `.env`:
+### .env
 
 ```env
-TELEGRAM_API_ID=ваш_api_id
-TELEGRAM_API_HASH=ваш_api_hash
+TELEGRAM_API_ID=        # https://my.telegram.org
+TELEGRAM_API_HASH=
+QWEN_API_KEY=           # https://dashscope.aliyuncs.com
+NOTION_TOKEN=           # https://www.notion.so/my-integrations
+NOTION_DATABASE_ID=
 TG_CHANNELS=channel1,channel2,channel3
-
-QWEN_API_KEY=ваш_ключ_qwen
-QWEN_MODEL=qwen-turbo
-
-NOTION_TOKEN=ваш_integration_token
-NOTION_DATABASE_ID=id_вашей_базы
 ```
 
-### 4. Добавь резюме
+### Резюме
 
-Создай файл `resume.txt` с текстом своего резюме — именно под него AI будет оценивать релевантность и писать сопроводительные письма.
+Создай файл `resume.txt` в корне проекта — AI будет использовать его для оценки релевантности и генерации писем. Формат свободный.
 
-### 5. Запускай
+---
+
+## Авторизация (один раз)
 
 ```bash
-# Telegram-каналы (batch)
+# Telegram — введи номер и код
 python3 run.py
 
-# Telegram live-мониторинг
-python3 run.py --live
+# hh.ru — откроется браузер, войди вручную
+python3 hh_login.py
 
-# hh.ru — сбор вакансий
-python3 hh_parser.py
+# LinkedIn — откроется браузер, войди вручную (только с зарубежного сервера / VPN)
+python3 linkedin_login.py
+```
 
-# hh.ru — автоотклик
+---
+
+## Запуск
+
+```bash
+# Telegram
+python3 run.py
+
+# hh.ru — поиск + автоотклик
 python3 hh_apply.py
 
-# LinkedIn посты (только локально, не на сервере в РФ)
+# LinkedIn
 python3 linkedin_posts.py
 
-# Догенерация писем для уже собранных вакансий
-python3 cover_letter.py
+# Фоновый запуск
+nohup python3 run.py > run.log 2>&1 &
 ```
 
 ---
 
-## ⚙️ Настройка
+## Стек
 
-### Telegram-каналы
-
-В `.env` через запятую:
-```env
-TG_CHANNELS=products_jobs_projects,forproducts,hireproproduct,evacuatejobs
-```
-
-### Лимиты и фильтры (в файлах)
-
-| Параметр | Файл | По умолчанию |
-|---|---|---|
-| `INITIAL_MESSAGES_LIMIT` | `tg_parser.py` | `20` |
-| `MAX_APPLIES` | `hh_apply.py` | `200` |
-| `DATE_FROM_DAYS` | `hh_apply.py` / `hh_parser.py` | `60` |
-| `PAGES` | `hh_apply.py` | `3` |
-
-### PM-фильтр
-
-Система записывает только продуктовые роли. Ключевые слова (`PM_KEYWORDS`):
-```
-product, продукт, продакт, cpo, chief product, head of product,
-product analyst, продуктовый аналитик, аналитик продукта, product owner
-```
-
----
-
-## 🗄️ Notion — структура базы
-
-Создай базу данных со следующими полями:
-
-| Поле | Тип | Описание |
-|---|---|---|
-| Должность | Title | Название вакансии |
-| Компания | Text | Название компании |
-| Статус | Select | Новая / Отправлено / Отказ / Оффер |
-| Релевантность | Select | 🔥 Высокая / 👍 Средняя / 🤷 Низкая |
-| Источник | Select | Telegram / LinkedIn / hh.ru |
-| Формат работы | Select | Офис / Удалёнка / Гибрид |
-| Локация | Text | Город |
-| Зарплата | Text | Вилка |
-| Ссылка на вакансию | URL | Ссылка на вакансию |
-| Сопроводительное письмо | Text | AI-письмо |
-| Заметки | Text | Требования кратко |
-| ТГ-канал | Text | Откуда |
-| Дата отправления | Date | Когда откликнулся |
-
----
-
-## 🔑 Получение ключей
-
-### Telegram API
-1. Перейди на [my.telegram.org](https://my.telegram.org)
-2. Войди и открой "API development tools"
-3. Создай приложение → скопируй `api_id` и `api_hash`
-
-### Qwen API (Alibaba Cloud)
-1. Зарегистрируйся на [dashscope.aliyuncs.com](https://dashscope.aliyuncs.com)
-2. Создай API-ключ в разделе "API Keys"
-3. Используй endpoint: `https://dashscope-intl.aliyuncs.com/compatible-mode/v1`
-
-### Notion Integration
-1. Открой [notion.so/my-integrations](https://www.notion.so/my-integrations)
-2. Создай новую интеграцию → скопируй `Internal Integration Token`
-3. В своей базе данных: ··· → Connections → подключи интеграцию
-4. Скопируй ID базы из URL: `notion.so/workspace/{DATABASE_ID}?v=...`
-
----
-
-## 🖥️ Деплой на сервер (VPS)
-
-```bash
-# Клонируй на сервер
-git clone https://github.com/AntonShuverov/job-tracker.git /root/job-tracker
-cd /root/job-tracker
-pip install -r requirements.txt
-
-# Настрой .env и resume.txt
-
-# Запуск в фоне
-nohup python3 run.py > last_run.log 2>&1 &
-nohup python3 hh_parser.py >> last_run.log 2>&1 &
-```
-
-### Cron (автозапуск 2 раза в день)
-
-```bash
-crontab -e
-```
-
-```cron
-0 6 * * * cd /root/job-tracker && python3 run.py >> cron.log 2>&1
-0 15 * * * cd /root/job-tracker && python3 hh_parser.py >> cron.log 2>&1
-```
-
-> ⚠️ **LinkedIn** работает только локально — сервер в РФ, LinkedIn заблокирован.
-
----
-
-## 🧩 Технологии
-
-| Компонент | Технология |
+| | |
 |---|---|
-| Язык | Python 3.13 |
-| Telegram | Telethon (MTProto API) |
-| LinkedIn / hh.ru автоотклик | Playwright (headless Chromium) |
-| Web scraping | BeautifulSoup + lxml |
-| AI-анализ | Qwen API (qwen-turbo) |
+| Telegram | Telethon (MTProto) |
+| LinkedIn / hh.ru отклик | Playwright (headless Chromium) |
+| hh.ru поиск | hh.ru REST API |
+| AI | Qwen API (qwen-turbo) |
 | База данных | Notion API |
-| Хостинг | Timeweb Cloud VPS (Ubuntu 24.04) |
 
 ---
 
-## 📝 Лицензия
+## Структура
 
-MIT — используй свободно, форкай, улучшай.
-
----
-
-<div align="center">
-  <sub>Сделано для автоматизации поиска работы 🚀</sub>
-</div>
+```
+├── run.py                  # Точка входа: Telegram
+├── tg_parser.py            # Парсинг ТГ + AI + Notion
+├── hh_apply.py             # Автоотклик hh.ru
+├── hh_parser.py            # Поиск hh.ru → Notion
+├── linkedin_posts.py       # LinkedIn посты → Notion
+├── cover_letter.py         # Догенерация писем
+│
+├── resume.txt              # ❌ не в Git
+├── .env                    # ❌ не в Git
+├── hh_session.json         # ❌ не в Git
+├── linkedin_session.json   # ❌ не в Git
+│
+├── .env.example
+├── requirements.txt
+└── README.md
+```
