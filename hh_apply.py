@@ -1,6 +1,6 @@
 """
 Job Tracker — Автоотклик на hh.ru
-Исправления: get_notion_headers(), деdup по URL, обработка вопросов работодателя, лог в файл
+Исправления: get_notion_headers(), деdup по URL, PM фильтр, обработка вопросов работодателя, лог в файл
 """
 
 import os, re, json, logging, requests, time
@@ -29,21 +29,29 @@ SESSION_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "hh_sess
 
 SEARCH_QUERIES = [
     "product manager", "продакт-менеджер", "product owner",
-    "менеджер продукта", "head of product",
+    "менеджер продукта", "head of product", "продуктовый аналитик",
+    "product analyst", "аналитик продукта",
 ]
 AREAS = ["1", "2", "160"]
 PER_PAGE = 20
-PAGES = 1
+PAGES = 3
 IT_ROLES = "96,100,107,112,113,114,116,121,124,125,126"
 EXPERIENCE = "between1And3"
 DATE_FROM_DAYS = 60
 APPLY_RELEVANCE = ["высокая", "средняя"]
-MAX_APPLIES = 15  # поднял с 10 до 15
+MAX_APPLIES = 200
+
+# PM фильтр — только продуктовые роли
+PM_KEYWORDS = [
+    "product", "продукт", "продакт", "cpo", "chief product",
+    "head of product", "product analyst", "продуктовый аналитик",
+    "аналитик продукта", "product owner",
+]
 
 # Параметры для ответов на вопросы работодателя
-DESIRED_SALARY = "200000"      # желаемая зарплата ₽
-DESIRED_CITY = "Москва"        # желаемый город
-READY_TO_RELOCATE = "Да"       # готовность к релокации
+DESIRED_SALARY = "200000"
+DESIRED_CITY = "Москва"
+READY_TO_RELOCATE = "Да"
 
 HH_HEADERS = {"User-Agent": "JobTracker/1.0 (shuverov.13@gmail.com)"}
 SCHEDULE_MAP = {"fullDay": "Офис", "remote": "Удалёнка", "flexible": "Гибрид", "flyInFlyOut": "Офис", "shift": "Офис"}
@@ -149,22 +157,17 @@ def analyze_vacancy(summary, desc):
 
 
 def fill_employer_questions(page):
-    """Заполняет вопросы работодателя в попапе отклика."""
     try:
-        # Зарплатные ожидания
         salary_inputs = page.query_selector_all("input[data-qa='vacancy-response-popup-salary']")
         for inp in salary_inputs:
             inp.fill(DESIRED_SALARY)
 
-        # Текстовые вопросы — отвечаем через Qwen если нужно
         question_blocks = page.query_selector_all("[data-qa='task-response-question']")
         for block in question_blocks:
             question_text = block.inner_text().strip()
             answer_input = block.query_selector("textarea, input[type='text']")
             if not answer_input:
                 continue
-
-            # Простые варианты
             q_lower = question_text.lower()
             if any(w in q_lower for w in ["город", "city", "локац"]):
                 answer_input.fill(DESIRED_CITY)
@@ -173,7 +176,6 @@ def fill_employer_questions(page):
             elif any(w in q_lower for w in ["зарплат", "salary", "ожидан"]):
                 answer_input.fill(DESIRED_SALARY)
             else:
-                # Остальные вопросы — короткий ответ через AI
                 result = call_qwen(
                     f"Ответь коротко (1-2 предложения) на вопрос работодателя от имени кандидата.\n"
                     f"Вопрос: {question_text}\n"
@@ -184,29 +186,24 @@ def fill_employer_questions(page):
                 if result and isinstance(result, str):
                     answer_input.fill(result[:200])
 
-        # Радио-кнопки / select
         selects = page.query_selector_all("select[data-qa]")
         for sel in selects:
             options = sel.query_selector_all("option")
             if options and len(options) > 1:
-                # Выбираем первый не пустой вариант
                 for opt in options[1:]:
                     val = opt.get_attribute("value")
                     if val:
                         sel.select_option(val)
                         break
-
     except Exception as e:
         logger.debug(f"Вопросы работодателя: {e}")
 
 
 def apply_to_vacancy(page, hh_url, cover_letter):
-    """Откликается на вакансию через Playwright."""
     try:
         page.goto(hh_url, wait_until="domcontentloaded")
         page.wait_for_timeout(2000)
 
-        # Кнопка Откликнуться
         apply_btn = (
             page.query_selector("[data-qa='vacancy-response-link-top']") or
             page.query_selector("[data-qa='vacancy-response-link-bottom']")
@@ -221,7 +218,6 @@ def apply_to_vacancy(page, hh_url, cover_letter):
         apply_btn.click()
         page.wait_for_timeout(2500)
 
-        # Сопроводительное письмо
         letter_input = (
             page.query_selector("textarea[data-qa='vacancy-response-popup-form-letter-input']") or
             page.query_selector("textarea")
@@ -230,11 +226,9 @@ def apply_to_vacancy(page, hh_url, cover_letter):
             letter_input.fill(cover_letter)
             page.wait_for_timeout(500)
 
-        # Заполняем вопросы работодателя
         fill_employer_questions(page)
         page.wait_for_timeout(500)
 
-        # Кнопка отправки
         submit_btn = (
             page.query_selector("[data-qa='vacancy-response-submit-popup']") or
             page.query_selector("[data-qa='vacancy-response-letter-submit']")
@@ -306,6 +300,12 @@ def main():
                         total_found += 1
 
                         title = item["name"]
+
+                        # PM фильтр
+                        if not any(kw in title.lower() for kw in PM_KEYWORDS):
+                            logger.info(f"  ⏭️  Не PM: «{title}» — пропускаю")
+                            continue
+
                         company = item.get("employer", {}).get("name", "")
                         salary = format_salary(item.get("salary"))
                         hh_url = item.get("alternate_url", "")
