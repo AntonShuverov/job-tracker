@@ -9,17 +9,17 @@ from playwright.sync_api import sync_playwright
 from dotenv import load_dotenv
 load_dotenv()
 
-QWEN_API_KEY       = os.getenv("QWEN_API_KEY", "")
-QWEN_MODEL         = os.getenv("QWEN_MODEL", "qwen-turbo")
-QWEN_API_URL       = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions"
-NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID", "")
-
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
 log = logging.getLogger("linkedin")
 
-RESUME_PATH  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resume.txt")
+from common import (
+    call_qwen, get_notion_headers, normalize_url, load_resume,
+    QWEN_API_KEY, QWEN_MODEL, QWEN_API_URL, NOTION_DATABASE_ID,
+    RELEVANCE_MAP,
+)
+
 SESSION_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "linkedin_session.json")
-RESUME_TEXT  = open(RESUME_PATH, encoding="utf-8").read() if os.path.exists(RESUME_PATH) else ""
+RESUME_TEXT  = load_resume()
 
 SEARCH_QUERIES = [
     "ищу продакта",
@@ -34,8 +34,6 @@ SEARCH_QUERIES = [
 
 SCROLL_COUNT  = 8
 PM_KEYWORDS   = ["product", "продукт", "продакт", "cpo", "chief product", "head of product"]
-RELEVANCE_MAP = {"высокая": "🔥 Высокая", "средняя": "👍 Средняя", "низкая": "🤷 Низкая"}
-
 # Мусорные строки которые не являются частью поста
 JUNK_LINES = {
     "публикация в ленте", "нравится", "комментировать", "поделиться", "отправить",
@@ -46,35 +44,6 @@ JUNK_LINES = {
     "самые последние", "дата размещения", "тип контента", "от участника",
     "все фильтры", "сброс", "0 уведомлений",
 }
-
-
-def get_notion_headers():
-    return {
-        "Authorization": f"Bearer {os.getenv('NOTION_TOKEN', '')}",
-        "Content-Type": "application/json",
-        "Notion-Version": "2022-06-28",
-    }
-
-
-def normalize_url(url):
-    return url.split("?")[0].split("#")[0].rstrip("/").lower() if url else ""
-
-
-def call_qwen(prompt, max_tokens=800):
-    try:
-        r = requests.post(QWEN_API_URL,
-            headers={"Authorization": f"Bearer {QWEN_API_KEY}", "Content-Type": "application/json"},
-            json={"model": QWEN_MODEL, "messages": [{"role": "user", "content": prompt}], "max_tokens": max_tokens},
-            timeout=30)
-        if r.status_code != 200:
-            return None
-        content = r.json()["choices"][0]["message"]["content"]
-        m = re.search(r"\{.*\}", content, re.DOTALL)
-        if m:
-            return json.loads(m.group())
-    except Exception as e:
-        log.error(f"Qwen: {e}")
-    return None
 
 
 PARSE_PROMPT = """\

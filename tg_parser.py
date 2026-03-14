@@ -21,10 +21,12 @@ from bs4 import BeautifulSoup
 
 TELEGRAM_API_ID   = int(os.getenv("TELEGRAM_API_ID", "0"))
 TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH", "")
-QWEN_API_KEY      = os.getenv("QWEN_API_KEY", "")
-QWEN_MODEL        = os.getenv("QWEN_MODEL", "qwen-turbo")
-QWEN_API_URL      = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions"
-NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID", "")
+
+from common import (
+    call_qwen, get_notion_headers, normalize_url, load_resume,
+    QWEN_API_KEY, QWEN_MODEL, QWEN_API_URL, NOTION_DATABASE_ID,
+    RELEVANCE_MAP, SCHEDULE_MAP, VALID_SCHEDULES,
+)
 TG_CHANNELS       = [ch.strip() for ch in os.getenv("TG_CHANNELS", "").split(",") if ch.strip()]
 INITIAL_MESSAGES_LIMIT = int(os.getenv("INITIAL_MESSAGES_LIMIT", "200"))
 DATE_DAYS         = int(os.getenv("DATE_DAYS", "14"))   # последние N дней
@@ -40,11 +42,7 @@ WEB_HEADERS = {
 }
 
 # ── Резюме ──
-RESUME_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resume.txt")
-RESUME_TEXT = ""
-if os.path.exists(RESUME_PATH):
-    with open(RESUME_PATH, "r", encoding="utf-8") as f:
-        RESUME_TEXT = f.read()
+RESUME_TEXT = load_resume()
 
 # ── PM-фильтр ──
 PM_KEYWORDS = [
@@ -60,18 +58,6 @@ def is_pm_vacancy(title: str) -> bool:
     return any(kw in t for kw in PM_KEYWORDS)
 
 
-# ── Notion headers — через функцию, не константа ──
-def get_notion_headers():
-    return {
-        "Authorization": f"Bearer {os.getenv('NOTION_TOKEN', '')}",
-        "Content-Type": "application/json",
-        "Notion-Version": "2022-06-28",
-    }
-
-SCHEDULE_MAP   = {"офис":"Офис","office":"Офис","удалёнка":"Удалёнка","удаленка":"Удалёнка",
-                  "remote":"Удалёнка","гибрид":"Гибрид","hybrid":"Гибрид","не указано":"Не указано"}
-VALID_SCHEDULES = {"Офис","Удалёнка","Гибрид","Не указано"}
-RELEVANCE_MAP  = {"высокая":"🔥 Высокая","средняя":"👍 Средняя","низкая":"🤷 Низкая"}
 
 
 # ── Playwright (LinkedIn) ──
