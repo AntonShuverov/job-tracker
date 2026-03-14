@@ -8,10 +8,11 @@ from datetime import datetime, timedelta
 from dotenv import load_dotenv
 load_dotenv()
 
-QWEN_API_KEY = os.getenv("QWEN_API_KEY", "")
-QWEN_MODEL = os.getenv("QWEN_MODEL", "qwen-turbo")
-QWEN_API_URL = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions"
-NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID", "")
+from common import (
+    call_qwen, get_notion_headers, normalize_url, load_resume,
+    QWEN_API_KEY, QWEN_MODEL, QWEN_API_URL, NOTION_DATABASE_ID,
+    RELEVANCE_MAP,
+)
 
 LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "hh_parser.log")
 logging.basicConfig(
@@ -22,8 +23,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("hh_parser")
 
-RESUME_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resume.txt")
-RESUME_TEXT = open(RESUME_PATH, encoding="utf-8").read() if os.path.exists(RESUME_PATH) else ""
+RESUME_TEXT = load_resume()
 
 SEARCH_QUERIES = [
     "product manager", "продакт-менеджер", "product owner",
@@ -38,30 +38,37 @@ DATE_FROM_DAYS = 60  # последние 60 дней = с начала 2026
 
 HH_HEADERS = {"User-Agent": "JobTracker/1.0 (shuverov.13@gmail.com)"}
 SCHEDULE_MAP = {"fullDay": "Офис", "remote": "Удалёнка", "flexible": "Гибрид", "flyInFlyOut": "Офис", "shift": "Офис"}
-RELEVANCE_MAP = {"высокая": "🔥 Высокая", "средняя": "👍 Средняя", "низкая": "🤷 Низкая"}
-
-
-def get_notion_headers():
-    return {"Authorization": f"Bearer {os.getenv('NOTION_TOKEN', '')}", "Content-Type": "application/json", "Notion-Version": "2022-06-28"}
-
-
-def normalize_url(url):
-    if not url: return ""
-    return url.split("?")[0].split("#")[0].rstrip("/").lower()
 
 
 def check_duplicate_by_url(hh_url):
     norm = normalize_url(hh_url)
-    if not norm: return False
-    try:
-        resp = requests.post(f"https://api.notion.com/v1/databases/{NOTION_DATABASE_ID}/query",
-            headers=get_notion_headers(), json={"page_size": 100}, timeout=15)
-        if resp.status_code != 200: return False
-        for page in resp.json().get("results", []):
-            db_url = normalize_url(page.get("properties", {}).get("Ссылка на вакансию", {}).get("url") or "")
-            if db_url and db_url == norm: return True
-    except Exception as e:
-        logger.error(f"Дедупликация: {e}")
+    if not norm:
+        return False
+    cursor = None
+    while True:
+        body = {"page_size": 100}
+        if cursor:
+            body["start_cursor"] = cursor
+        try:
+            resp = requests.post(
+                f"https://api.notion.com/v1/databases/{NOTION_DATABASE_ID}/query",
+                headers=get_notion_headers(), json=body, timeout=15,
+            )
+            if resp.status_code != 200:
+                return False
+            data = resp.json()
+            for page in data.get("results", []):
+                db_url = normalize_url(
+                    page.get("properties", {}).get("Ссылка на вакансию", {}).get("url") or ""
+                )
+                if db_url and db_url == norm:
+                    return True
+            if not data.get("has_more"):
+                break
+            cursor = data.get("next_cursor")
+        except Exception as e:
+            logger.error(f"check_duplicate_by_url: {e}")
+            return False
     return False
 
 
@@ -84,7 +91,8 @@ def get_vacancy_details(vid):
     try:
         resp = requests.get(f"https://api.hh.ru/vacancies/{vid}", headers=HH_HEADERS, timeout=15)
         if resp.status_code == 200: return resp.json()
-    except: pass
+    except Exception as e:
+        logger.error(f"get_vacancy_details: {e}")
     return None
 
 
@@ -101,20 +109,6 @@ def clean_html(text):
     if not text: return ""
     return re.sub(r'\n{3,}', '\n\n', re.sub(r'<[^>]+>', '\n', text)).strip()
 
-
-def call_qwen(prompt, max_tokens=800):
-    try:
-        resp = requests.post(QWEN_API_URL,
-            headers={"Authorization": f"Bearer {QWEN_API_KEY}", "Content-Type": "application/json"},
-            json={"model": QWEN_MODEL, "messages": [{"role": "user", "content": prompt}], "max_tokens": max_tokens},
-            timeout=30)
-        if resp.status_code != 200: return None
-        content = resp.json()["choices"][0]["message"]["content"]
-        m = re.search(r"\{.*\}", content, re.DOTALL)
-        if m: return json.loads(m.group())
-    except Exception as e:
-        logger.error(f"Qwen: {e}")
-    return None
 
 
 ANALYZE_PROMPT = """Проанализируй вакансию и резюме кандидата.
@@ -160,7 +154,9 @@ def create_notion_page(title, company, salary, location, schedule, hh_url, notes
         resp = requests.post("https://api.notion.com/v1/pages", headers=get_notion_headers(),
             json={"parent": {"database_id": NOTION_DATABASE_ID}, "properties": props}, timeout=30)
         return resp.status_code == 200
-    except: return False
+    except Exception as e:
+        logger.error(f"create_notion_page: {e}")
+        return False
 
 
 def main():
