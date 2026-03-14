@@ -12,6 +12,7 @@
 4. **Генерирует сопроводительное письмо** с цифрами из резюме под каждую вакансию
 5. **Сохраняет в Notion** с дедупликацией по URL
 6. **Автоматически откликается** на hh.ru
+7. **Нетворкинг в LinkedIn** — автоматически отправляет приглашения продактам и рекрутёрам в IT-компаниях РФ и КЗ
 
 ---
 
@@ -23,6 +24,7 @@
 | `hh_apply.py` | Поиск вакансий на hh.ru + автоотклик с AI-письмом |
 | `hh_parser.py` | Поиск вакансий на hh.ru → Notion (без отклика) |
 | `linkedin_posts.py` | Парсинг LinkedIn постов → Notion |
+| `linkedin_connect.py` | Автоматические приглашения в контакты LinkedIn (продакты + рекрутёры, РФ + КЗ) |
 | `cover_letter.py` | Догенерация писем для вакансий уже в Notion |
 
 > ⚠️ LinkedIn работает только с зарубежного сервера или через VPN — в РФ заблокирован.
@@ -70,6 +72,8 @@ python3 hh_login.py
 
 # LinkedIn — откроется браузер, войди вручную (только с зарубежного сервера / VPN)
 python3 linkedin_login.py
+
+# Сессия сохраняется в linkedin_session.json (~1 неделя)
 ```
 
 ---
@@ -83,8 +87,11 @@ python3 run.py
 # hh.ru — поиск + автоотклик
 python3 hh_apply.py
 
-# LinkedIn
+# LinkedIn посты → Notion
 python3 linkedin_posts.py
+
+# LinkedIn нетворкинг — отправить приглашения (до 40-50 в день)
+python3 linkedin_connect.py
 
 # Фоновый запуск
 nohup python3 run.py > run.log 2>&1 &
@@ -112,12 +119,13 @@ nohup python3 run.py > run.log 2>&1 &
 ├── hh_apply.py             # Автоотклик hh.ru
 ├── hh_parser.py            # Поиск hh.ru → Notion
 ├── linkedin_posts.py       # LinkedIn посты → Notion
+├── linkedin_connect.py     # LinkedIn нетворкинг — авто-приглашения
 ├── cover_letter.py         # Догенерация писем
 │
 ├── resume.txt              # ❌ не в Git
 ├── .env                    # ❌ не в Git
 ├── hh_session.json         # ❌ не в Git
-├── linkedin_session.json   # ❌ не в Git
+├── linkedin_session.json   # ❌ не в Git  (обновлять через linkedin_login.py ~каждую неделю)
 │
 ├── .env.example
 ├── requirements.txt
