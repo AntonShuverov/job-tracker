@@ -15,3 +15,5 @@ hh_session.json
 hh_login.py
 test_hh_apply.py
 resume.txt
+*.log
+job_tracker_session*

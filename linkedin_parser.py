@@ -14,26 +14,23 @@ from playwright.sync_api import sync_playwright
 from dotenv import load_dotenv
 load_dotenv()
 
-QWEN_API_KEY = os.getenv("QWEN_API_KEY", "")
-QWEN_MODEL = os.getenv("QWEN_MODEL", "qwen-turbo")
-QWEN_API_URL = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions"
-NOTION_TOKEN = os.getenv("NOTION_TOKEN", "")
-NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID", "")
-
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
 logger = logging.getLogger("linkedin_parser")
 
-RESUME_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resume.txt")
-RESUME_TEXT = ""
-if os.path.exists(RESUME_PATH):
-    with open(RESUME_PATH, "r", encoding="utf-8") as f:
-        RESUME_TEXT = f.read()
+from common import (
+    call_qwen, get_notion_headers, normalize_url, load_resume,
+    QWEN_API_KEY, QWEN_MODEL, QWEN_API_URL, NOTION_DATABASE_ID,
+    RELEVANCE_MAP,
+)
+
+RESUME_TEXT = load_resume()
 
 SESSION_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "linkedin_session.json")
 
 # ═══════════════════════════════════════
 # НАСТРОЙКИ ПОИСКА
 # ═══════════════════════════════════════
+
 
 SEARCH_URLS = [
     ("продакт менеджер", "https://www.linkedin.com/jobs/search/?keywords=%D0%BF%D1%80%D0%BE%D0%B4%D0%B0%D0%BA%D1%82%20%D0%BC%D0%B5%D0%BD%D0%B5%D0%B4%D0%B6%D0%B5%D1%80&f_TPR=r604800"),
@@ -46,26 +43,6 @@ SEARCH_URLS = [
 MAX_PER_QUERY = 15  # макс вакансий на запрос
 
 # ═══════════════════════════════════════
-
-NOTION_HEADERS = {"Authorization": f"Bearer {NOTION_TOKEN}", "Content-Type": "application/json", "Notion-Version": "2022-06-28"}
-RELEVANCE_MAP = {"высокая": "🔥 Высокая", "средняя": "👍 Средняя", "низкая": "🤷 Низкая"}
-
-
-def call_qwen(prompt, max_tokens=800):
-    try:
-        resp = requests.post(QWEN_API_URL,
-            headers={"Authorization": f"Bearer {QWEN_API_KEY}", "Content-Type": "application/json"},
-            json={"model": QWEN_MODEL, "messages": [{"role": "user", "content": prompt}], "max_tokens": max_tokens},
-            timeout=30)
-        if resp.status_code != 200:
-            return None
-        content = resp.json()["choices"][0]["message"]["content"]
-        m = re.search(r"\{.*\}", content, re.DOTALL)
-        if m:
-            return json.loads(m.group())
-    except Exception as e:
-        logger.error(f"Qwen: {e}")
-    return None
 
 
 ANALYZE_PROMPT = """Проанализируй вакансию и резюме.
@@ -92,15 +69,35 @@ ANALYZE_PROMPT = """Проанализируй вакансию и резюме.
 ТОЛЬКО JSON."""
 
 
-def check_duplicate(title):
-    try:
-        resp = requests.post(f"https://api.notion.com/v1/databases/{NOTION_DATABASE_ID}/query",
-            headers=NOTION_HEADERS,
-            json={"filter": {"property": "Должность", "title": {"equals": title}}, "page_size": 1}, timeout=15)
-        if resp.status_code == 200:
-            return len(resp.json().get("results", [])) > 0
-    except Exception:
-        pass
+def check_duplicate_by_url(job_url: str) -> bool:
+    norm = normalize_url(job_url)
+    if not norm:
+        return False
+    cursor = None
+    while True:
+        body = {"page_size": 100}
+        if cursor:
+            body["start_cursor"] = cursor
+        try:
+            resp = requests.post(
+                f"https://api.notion.com/v1/databases/{NOTION_DATABASE_ID}/query",
+                headers=get_notion_headers(), json=body, timeout=15,
+            )
+            if resp.status_code != 200:
+                return False
+            data = resp.json()
+            for page in data.get("results", []):
+                db_url = normalize_url(
+                    page.get("properties", {}).get("Ссылка на вакансию", {}).get("url") or ""
+                )
+                if db_url and db_url == norm:
+                    return True
+            if not data.get("has_more"):
+                break
+            cursor = data.get("next_cursor")
+        except Exception as e:
+            logger.error(f"check_duplicate_by_url: {e}")
+            return False
     return False
 
 
@@ -125,7 +122,7 @@ def create_notion_page(title, company, location, schedule, linkedin_url, notes, 
     if relevance:
         props["Релевантность"] = {"select": {"name": RELEVANCE_MAP.get(relevance, "👍 Средняя")}}
     try:
-        resp = requests.post("https://api.notion.com/v1/pages", headers=NOTION_HEADERS,
+        resp = requests.post("https://api.notion.com/v1/pages", headers=get_notion_headers(),
             json={"parent": {"database_id": NOTION_DATABASE_ID}, "properties": props}, timeout=30)
         return resp.status_code == 200
     except Exception:
@@ -222,8 +219,8 @@ def main():
                 else:
                     job_url = href
 
-                # Убираем query params для дедупликации
-                clean_url = job_url.split("?")[0]
+                # Дедупликация (нормализованный URL)
+                clean_url = normalize_url(job_url)
                 if clean_url in seen_urls:
                     continue
                 seen_urls.add(clean_url)
@@ -235,7 +232,7 @@ def main():
 
                 logger.info(f"\n  📋 {title} @ {company}")
 
-                if check_duplicate(title):
+                if check_duplicate_by_url(clean_url):
                     logger.info(f"     ⏭️ Дубликат")
                     continue
 

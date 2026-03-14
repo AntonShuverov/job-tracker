@@ -3,7 +3,6 @@
 Использует Qwen AI для анализа совместимости и генерации писем.
 """
 
-import os
 import json
 import re
 import requests
@@ -11,17 +10,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-QWEN_API_KEY = os.getenv("QWEN_API_KEY", "")
-QWEN_MODEL = os.getenv("QWEN_MODEL", "qwen-turbo")
-QWEN_API_URL = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions"
-NOTION_TOKEN = os.getenv("NOTION_TOKEN", "")
-NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID", "")
-NOTION_HEADERS = {"Authorization": f"Bearer {NOTION_TOKEN}", "Content-Type": "application/json", "Notion-Version": "2022-06-28"}
+from common import (
+    get_notion_headers, load_resume,
+    QWEN_API_KEY, QWEN_MODEL, QWEN_API_URL, NOTION_DATABASE_ID,
+    RELEVANCE_MAP,
+)
 
-# Загружаем резюме
-RESUME_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resume.txt")
-with open(RESUME_PATH, "r", encoding="utf-8") as f:
-    RESUME_TEXT = f.read()
+RESUME_TEXT = load_resume()
 
 
 COVER_LETTER_PROMPT = """Ты — карьерный помощник. Тебе дано резюме кандидата и описание вакансии.
@@ -71,7 +66,7 @@ def get_new_vacancies():
 
         resp = requests.post(
             f"https://api.notion.com/v1/databases/{NOTION_DATABASE_ID}/query",
-            headers=NOTION_HEADERS, json=payload, timeout=30)
+            headers=get_notion_headers(), json=payload, timeout=30)
 
         if resp.status_code != 200:
             print(f"❌ Notion ошибка: {resp.status_code}")
@@ -146,12 +141,7 @@ def generate_cover_letter(vacancy_text):
 
 def update_notion_page(page_id, cover_letter, relevance):
     """Обновляет вакансию в Notion: сопроводительное + релевантность."""
-    relevance_map = {
-        "высокая": "🔥 Высокая",
-        "средняя": "👍 Средняя",
-        "низкая": "🤷 Низкая",
-    }
-    notion_relevance = relevance_map.get(relevance, "👍 Средняя")
+    notion_relevance = RELEVANCE_MAP.get(relevance, "👍 Средняя")
 
     props = {
         "Сопроводительное письмо": {"rich_text": [{"text": {"content": cover_letter[:2000]}}]},
@@ -160,7 +150,7 @@ def update_notion_page(page_id, cover_letter, relevance):
 
     resp = requests.patch(
         f"https://api.notion.com/v1/pages/{page_id}",
-        headers=NOTION_HEADERS,
+        headers=get_notion_headers(),
         json={"properties": props},
         timeout=30)
 

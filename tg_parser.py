@@ -26,14 +26,15 @@ from bs4 import BeautifulSoup
 
 TELEGRAM_API_ID = int(os.getenv("TELEGRAM_API_ID", "0"))
 TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH", "")
-QWEN_API_KEY = os.getenv("QWEN_API_KEY", "")
-QWEN_MODEL = os.getenv("QWEN_MODEL", "qwen-turbo")
-QWEN_API_URL = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions"
-NOTION_TOKEN = os.getenv("NOTION_TOKEN", "")
-NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID", "")
 TG_CHANNELS = [ch.strip() for ch in os.getenv("TG_CHANNELS", "").split(",") if ch.strip()]
 INITIAL_MESSAGES_LIMIT = int(os.getenv("INITIAL_MESSAGES_LIMIT", "50"))
 MODE = os.getenv("MODE", "batch")
+
+from common import (
+    call_qwen, get_notion_headers, normalize_url, load_resume,
+    QWEN_API_KEY, QWEN_MODEL, QWEN_API_URL, NOTION_DATABASE_ID,
+    RELEVANCE_MAP, SCHEDULE_MAP, VALID_SCHEDULES,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
 logger = logging.getLogger("job_tracker")
@@ -45,28 +46,7 @@ WEB_HEADERS = {
 }
 
 # ── Резюме ──
-RESUME_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resume.txt")
-RESUME_TEXT = ""
-if os.path.exists(RESUME_PATH):
-    with open(RESUME_PATH, "r", encoding="utf-8") as f:
-        RESUME_TEXT = f.read()
-
-# ── Notion headers (функция чтобы всегда брать актуальный токен) ──
-def get_notion_headers():
-    return {
-        "Authorization": f"Bearer {os.getenv('NOTION_TOKEN', '')}",
-        "Content-Type": "application/json",
-        "Notion-Version": "2022-06-28"
-    }
-
-SCHEDULE_MAP = {
-    "офис": "Офис", "office": "Офис",
-    "удалёнка": "Удалёнка", "удаленка": "Удалёнка", "remote": "Удалёнка",
-    "гибрид": "Гибрид", "hybrid": "Гибрид",
-    "не указано": "Не указано"
-}
-VALID_SCHEDULES = {"Офис", "Удалёнка", "Гибрид", "Не указано"}
-RELEVANCE_MAP = {"высокая": "🔥 Высокая", "средняя": "👍 Средняя", "низкая": "🤷 Низкая"}
+RESUME_TEXT = load_resume()
 
 # ── PM фильтр ──
 PM_KEYWORDS = [
@@ -222,23 +202,6 @@ PARSE_PROMPT = """Ты парсишь вакансии из Telegram-канал�
 6. Верни ТОЛЬКО JSON."""
 
 
-def call_qwen(prompt, max_tokens=800):
-    try:
-        resp = requests.post(
-            QWEN_API_URL,
-            headers={"Authorization": f"Bearer {QWEN_API_KEY}", "Content-Type": "application/json"},
-            json={"model": QWEN_MODEL, "messages": [{"role": "user", "content": prompt}], "max_tokens": max_tokens},
-            timeout=30
-        )
-        if resp.status_code != 200:
-            return None
-        content = resp.json()["choices"][0]["message"]["content"]
-        m = re.search(r"\{.*\}", content, re.DOTALL)
-        if m:
-            return json.loads(m.group())
-    except Exception as e:
-        logger.error(f"Qwen: {e}")
-    return None
 
 
 def parse_vacancy_with_ai(text, extra_info=""):
@@ -301,14 +264,6 @@ def generate_cover_letter(vacancy):
 
 
 # ── Дедупликация по URL ──
-
-def normalize_url(url: str) -> str:
-    if not url:
-        return ""
-    url = url.split("?")[0].split("#")[0]
-    url = url.rstrip("/")
-    return url.lower()
-
 
 def check_duplicate_by_url(vacancy_url: str, tg_link: str) -> bool:
     normalized = normalize_url(vacancy_url)

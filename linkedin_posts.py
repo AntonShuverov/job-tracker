@@ -20,19 +20,16 @@ from playwright.sync_api import sync_playwright
 from dotenv import load_dotenv
 load_dotenv()
 
-QWEN_API_KEY = os.getenv("QWEN_API_KEY", "")
-QWEN_MODEL = os.getenv("QWEN_MODEL", "qwen-turbo")
-QWEN_API_URL = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions"
-NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID", "")
-
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
 logger = logging.getLogger("linkedin_posts")
 
-RESUME_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resume.txt")
-RESUME_TEXT = ""
-if os.path.exists(RESUME_PATH):
-    with open(RESUME_PATH, "r", encoding="utf-8") as f:
-        RESUME_TEXT = f.read()
+from common import (
+    call_qwen, get_notion_headers, normalize_url, load_resume,
+    QWEN_API_KEY, QWEN_MODEL, QWEN_API_URL, NOTION_DATABASE_ID,
+    RELEVANCE_MAP,
+)
+
+RESUME_TEXT = load_resume()
 
 SESSION_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "linkedin_session.json")
 
@@ -64,47 +61,13 @@ PM_KEYWORDS = [
     "руководитель продукт",
 ]
 
-RELEVANCE_MAP = {"высокая": "🔥 Высокая", "средняя": "👍 Средняя", "низкая": "🤷 Низкая"}
-
 # ═══════════════════════════════════════
-
-
-def get_notion_headers():
-    return {
-        "Authorization": f"Bearer {os.getenv('NOTION_TOKEN', '')}",
-        "Content-Type": "application/json",
-        "Notion-Version": "2022-06-28"
-    }
 
 
 def is_pm_vacancy(title: str) -> bool:
     if not title:
         return False
     return any(kw in title.lower() for kw in PM_KEYWORDS)
-
-
-def normalize_url(url: str) -> str:
-    if not url:
-        return ""
-    url = url.split("?")[0].split("#")[0]
-    return url.rstrip("/").lower()
-
-
-def call_qwen(prompt, max_tokens=800):
-    try:
-        resp = requests.post(QWEN_API_URL,
-            headers={"Authorization": f"Bearer {QWEN_API_KEY}", "Content-Type": "application/json"},
-            json={"model": QWEN_MODEL, "messages": [{"role": "user", "content": prompt}], "max_tokens": max_tokens},
-            timeout=30)
-        if resp.status_code != 200:
-            return None
-        content = resp.json()["choices"][0]["message"]["content"]
-        m = re.search(r"\{.*\}", content, re.DOTALL)
-        if m:
-            return json.loads(m.group())
-    except Exception as e:
-        logger.error(f"Qwen: {e}")
-    return None
 
 
 PARSE_PROMPT = """Проанализируй текст LinkedIn-поста. Это вакансия/поиск сотрудника?
