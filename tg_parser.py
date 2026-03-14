@@ -14,6 +14,9 @@ import asyncio
 import logging
 from datetime import datetime, timezone, timedelta
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from telethon import TelegramClient, events
 from telethon.errors import FloodWaitError
 import requests

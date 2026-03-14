@@ -177,20 +177,42 @@ def fill_employer_questions(page):
 
 def apply_to_vacancy(page, hh_url, cover_letter):
     try:
-        page.goto(hh_url, wait_until="domcontentloaded")
-        page.wait_for_timeout(2000)
+        page.goto(hh_url, wait_until="domcontentloaded", timeout=30000)
+        page.wait_for_timeout(3000)
 
-        apply_btn = (
-            page.query_selector("[data-qa='vacancy-response-link-top']") or
-            page.query_selector("[data-qa='vacancy-response-link-bottom']")
-        )
+        # Закрываем cookie-баннер если появился
+        try:
+            cookie_btn = page.query_selector("button[data-qa='cookie-agreement-button']") or \
+                         page.query_selector("button:has-text('Понятно')")
+            if cookie_btn:
+                cookie_btn.click()
+                page.wait_for_timeout(500)
+        except Exception:
+            pass
+
+        # Ждём появления кнопки (React рендерит её асинхронно)
+        apply_btn = None
+        for selector in ["[data-qa='vacancy-response-link-top']", "[data-qa='vacancy-response-link-bottom']"]:
+            try:
+                page.wait_for_selector(selector, timeout=8000)
+                apply_btn = page.query_selector(selector)
+                if apply_btn:
+                    break
+            except Exception:
+                pass
+
         if not apply_btn:
+            current_url = page.url
+            page_text = page.inner_text("body")[:300] if page.query_selector("body") else ""
+            logger.warning(f"     URL после загрузки: {current_url}")
+            logger.warning(f"     Текст страницы: {page_text[:200]!r}")
             return False, "Кнопка откликнуться не найдена"
 
         btn_text = apply_btn.inner_text().strip()
         if "Откликнуться" not in btn_text:
             return False, f"Уже откликнулся или кнопка: «{btn_text}»"
 
+        apply_btn.scroll_into_view_if_needed()
         apply_btn.click()
         page.wait_for_timeout(2500)
 

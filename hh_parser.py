@@ -39,6 +39,12 @@ DATE_FROM_DAYS = 60  # последние 60 дней = с начала 2026
 HH_HEADERS = {"User-Agent": "JobTracker/1.0 (shuverov.13@gmail.com)"}
 SCHEDULE_MAP = {"fullDay": "Офис", "remote": "Удалёнка", "flexible": "Гибрид", "flyInFlyOut": "Офис", "shift": "Офис"}
 
+PM_KEYWORDS = [
+    "product manager", "product owner", "продакт", "продуктовый менеджер",
+    "менеджер продукта", "head of product", "cpo", "chief product",
+    "продуктовый аналитик", "product analyst", "аналитик продукта",
+]
+
 
 def check_duplicate_by_url(hh_url):
     norm = normalize_url(hh_url)
@@ -188,6 +194,11 @@ def main():
                     hh_url = item.get("alternate_url", "")
                     location = item.get("area", {}).get("name", "")
                     schedule = SCHEDULE_MAP.get(item.get("schedule", {}).get("id", ""), "Не указано")
+
+                    # Фильтр — только продуктовые роли
+                    if not any(kw in title.lower() for kw in PM_KEYWORDS):
+                        logger.info(f"  ⏭️  Не PM: «{title}»")
+                        continue
 
                     logger.info(f"  📋 {title} @ {company}")
 
