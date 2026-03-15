@@ -11,6 +11,7 @@ import os
 import logging
 import time
 import random
+import tempfile
 import requests
 from datetime import date
 from playwright.sync_api import sync_playwright
@@ -48,6 +49,31 @@ log = logging.getLogger("linkedin_publisher")
 def extract_text(rich_text: list) -> str:
     """Concatenate plain_text from a Notion rich_text array."""
     return "".join(item["plain_text"] for item in rich_text)
+
+
+def download_photo(url: str) -> str | None:
+    """
+    Download photo from URL to a temp file.
+    Returns temp file path, or None on failure.
+    Caller is responsible for deleting the file.
+    """
+    try:
+        r = requests.get(url, timeout=30)
+        if r.status_code != 200:
+            log.warning(f"Не удалось скачать фото: {r.status_code}")
+            return None
+        # Guess extension from Content-Type
+        ct = r.headers.get("Content-Type", "image/jpeg")
+        ext = "." + ct.split("/")[-1].split(";")[0].strip()  # e.g. .jpeg, .png
+        if ext not in (".jpeg", ".jpg", ".png", ".gif", ".webp"):
+            ext = ".jpg"
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
+        tmp.write(r.content)
+        tmp.close()
+        return tmp.name
+    except Exception as e:
+        log.warning(f"download_photo error: {e}")
+        return None
 
 
 def validate_post_text(text: str) -> tuple[bool, str | None]:
@@ -114,11 +140,22 @@ def get_scheduled_posts() -> list[dict]:
             title_items = props.get("Заголовок", {}).get("title", [])
             title = extract_text(title_items) if title_items else "(без заголовка)"
 
+            # Get photo URL from Notion Files & media property (optional)
+            photo_url = None
+            files = props.get("Фото", {}).get("files", [])
+            if files:
+                f = files[0]
+                if f.get("type") == "file":
+                    photo_url = f["file"]["url"]       # signed Notion URL (~1h)
+                elif f.get("type") == "external":
+                    photo_url = f["external"]["url"]
+
             results.append({
                 "id": page["id"],
                 "title": title,
                 "text": text,
                 "scheduled_date": scheduled.isoformat(),
+                "photo_url": photo_url,
             })
 
         if not data.get("has_more"):
@@ -218,9 +255,9 @@ def capture_post_url(page) -> str | None:
     return None
 
 
-def publish_post(page, text: str) -> bool:
+def publish_post(page, text: str, photo_path: str | None = None) -> bool:
     """
-    Click 'Start a post', type text, click 'Post'.
+    Click 'Start a post', type text, optionally upload a photo, click 'Post'.
     Returns True if post button was clicked successfully.
     """
     try:
@@ -262,6 +299,25 @@ def publish_post(page, text: str) -> bool:
         editor.click()
         page.keyboard.type(text, delay=20)
         page.wait_for_timeout(1500)
+
+        # Upload photo if provided
+        if photo_path:
+            media_btn = (
+                page.query_selector("button[aria-label='Добавить медиаресурс']") or
+                page.query_selector("button[aria-label*='медиа']") or
+                page.query_selector("button[aria-label*='media']") or
+                page.query_selector("button[aria-label*='Add a photo']")
+            )
+            if media_btn:
+                # Use file chooser to upload
+                with page.expect_file_chooser() as fc_info:
+                    media_btn.click()
+                file_chooser = fc_info.value
+                file_chooser.set_files(photo_path)
+                page.wait_for_timeout(4000)
+                log.info(f"   🖼️  Фото загружено: {os.path.basename(photo_path)}")
+            else:
+                log.warning("   ⚠️  Кнопка 'Добавить медиаресурс' не найдена — публикую без фото")
 
         # Click "Публикация" / "Post" — class is share-actions__primary-action
         post_btn = (
@@ -330,8 +386,20 @@ def main():
                 update_notion_error(post["id"], reason)
                 continue
 
+            # Download photo from Notion if attached
+            photo_path = None
+            if post.get("photo_url"):
+                log.info("   🖼️  Скачиваю фото из Notion...")
+                photo_path = download_photo(post["photo_url"])
+                if not photo_path:
+                    log.warning("   ⚠️  Не удалось скачать фото — публикую без фото")
+
             # Publish
-            published = publish_post(page, post["text"])
+            try:
+                published = publish_post(page, post["text"], photo_path=photo_path)
+            finally:
+                if photo_path and os.path.exists(photo_path):
+                    os.unlink(photo_path)
             if not published:
                 reason = "Не удалось опубликовать пост — кнопка не найдена"
                 log.error(f"   ❌ {reason}")
