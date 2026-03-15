@@ -165,65 +165,51 @@ def get_scheduled_posts() -> list[dict]:
     return results
 
 
+def notion_patch(page_id: str, props: dict, retries: int = 3) -> bool:
+    """PATCH a Notion page with retries on timeout/network errors."""
+    for attempt in range(1, retries + 1):
+        try:
+            r = requests.patch(
+                f"{NOTION_API}/pages/{page_id}",
+                headers=get_notion_headers(),
+                json={"properties": props},
+                timeout=30,
+            )
+            if r.status_code == 200:
+                return True
+            log.error(f"Notion PATCH failed: {r.status_code} {r.text[:200]}")
+            return False
+        except Exception as e:
+            log.warning(f"Notion PATCH attempt {attempt}/{retries} error: {e}")
+            if attempt < retries:
+                time.sleep(3)
+    return False
+
+
 def update_notion_published(page_id: str, publish_date: str, post_url: str) -> bool:
     """Mark page as published with date and URL."""
-    props = {
+    return notion_patch(page_id, {
         "Статус":           {"select": {"name": "Опубликован"}},
         "Дата публикации":  {"date": {"start": publish_date}},
         "Ссылка":           {"url": post_url},
-    }
-    try:
-        r = requests.patch(
-            f"{NOTION_API}/pages/{page_id}",
-            headers=get_notion_headers(),
-            json={"properties": props},
-            timeout=15,
-        )
-        if r.status_code == 200:
-            return True
-        log.error(f"Notion update failed: {r.status_code} {r.text[:200]}")
-    except Exception as e:
-        log.error(f"Notion update error: {e}")
-    return False
+    })
 
 
 def update_notion_error(page_id: str, reason: str) -> bool:
     """Mark page as error and write reason to Выводы."""
-    props = {
+    return notion_patch(page_id, {
         "Статус":  {"select": {"name": "Ошибка"}},
         "Выводы":  {"rich_text": [{"text": {"content": reason[:2000]}}]},
-    }
-    try:
-        r = requests.patch(
-            f"{NOTION_API}/pages/{page_id}",
-            headers=get_notion_headers(),
-            json={"properties": props},
-            timeout=15,
-        )
-        return r.status_code == 200
-    except Exception as e:
-        log.error(f"Notion error update failed: {e}")
-    return False
+    })
 
 
 def update_notion_url_missing(page_id: str, publish_date: str) -> bool:
     """Mark as published but URL not captured — write note to Выводы."""
-    props = {
+    return notion_patch(page_id, {
         "Статус":          {"select": {"name": "Опубликован"}},
         "Дата публикации": {"date": {"start": publish_date}},
         "Выводы":          {"rich_text": [{"text": {"content": "URL не захвачен — проверь вручную"}}]},
-    }
-    try:
-        r = requests.patch(
-            f"{NOTION_API}/pages/{page_id}",
-            headers=get_notion_headers(),
-            json={"properties": props},
-            timeout=15,
-        )
-        return r.status_code == 200
-    except Exception as e:
-        log.error(f"Notion url-missing update failed: {e}")
-    return False
+    })
 
 
 # ── LinkedIn publishing ───────────────────────────────────────────────────────
