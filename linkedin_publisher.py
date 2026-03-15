@@ -263,11 +263,13 @@ def publish_post(page, text: str) -> bool:
         page.keyboard.type(text, delay=20)
         page.wait_for_timeout(1500)
 
-        # Click "Опубликовать" / "Post"
+        # Click "Публикация" / "Post" — class is share-actions__primary-action
         post_btn = (
+            page.query_selector("button.share-actions__primary-action") or
+            page.query_selector("button:has-text('Публикация')") or
+            page.query_selector("button:has-text('Опубликовать')") or
             page.query_selector("button[aria-label*='Опубликовать']") or
             page.query_selector("button[aria-label*='Post']") or
-            page.query_selector("button:has-text('Опубликовать')") or
             page.query_selector("button:has-text('Post')")
         )
         if not post_btn:
