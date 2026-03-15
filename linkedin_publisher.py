@@ -314,20 +314,26 @@ def publish_post(page, text: str, photo_path: str | None = None) -> bool:
                     media_btn.click()
                 file_chooser = fc_info.value
                 file_chooser.set_files(photo_path)
-                page.wait_for_timeout(4000)
                 log.info(f"   🖼️  Фото загружено: {os.path.basename(photo_path)}")
             else:
                 log.warning("   ⚠️  Кнопка 'Добавить медиаресурс' не найдена — публикую без фото")
 
-        # Click "Публикация" / "Post" — class is share-actions__primary-action
-        post_btn = (
-            page.query_selector("button.share-actions__primary-action") or
-            page.query_selector("button:has-text('Публикация')") or
-            page.query_selector("button:has-text('Опубликовать')") or
-            page.query_selector("button[aria-label*='Опубликовать']") or
-            page.query_selector("button[aria-label*='Post']") or
-            page.query_selector("button:has-text('Post')")
-        )
+        # Wait for publish button to appear and become enabled (photo processing takes time)
+        post_btn = None
+        for _ in range(20):  # up to 10 seconds
+            page.wait_for_timeout(500)
+            btn = (
+                page.query_selector("button.share-actions__primary-action") or
+                page.query_selector("button:has-text('Публикация')") or
+                page.query_selector("button:has-text('Опубликовать')") or
+                page.query_selector("button[aria-label*='Опубликовать']") or
+                page.query_selector("button[aria-label*='Post']") or
+                page.query_selector("button:has-text('Post')")
+            )
+            if btn and not btn.get_attribute("disabled"):
+                post_btn = btn
+                break
+
         if not post_btn:
             log.error("Кнопка 'Опубликовать' не найдена")
             return False
