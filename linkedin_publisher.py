@@ -98,6 +98,7 @@ def get_scheduled_posts() -> list[dict]:
             props = page["properties"]
 
             # Get scheduled date
+            # Note: trailing space is intentional — it's the actual Notion field name
             date_field = props.get("Дата когда нужно опубликовать ", {}).get("date")
             if not date_field:
                 continue
@@ -132,7 +133,7 @@ def update_notion_published(page_id: str, publish_date: str, post_url: str) -> b
     props = {
         "Статус":           {"select": {"name": "Опубликован"}},
         "Дата публикации":  {"date": {"start": publish_date}},
-        "Ссылка":           {"url": post_url if post_url else None},
+        "Ссылка":           {"url": post_url},
     }
     try:
         r = requests.patch(
@@ -192,7 +193,8 @@ def update_notion_url_missing(page_id: str, publish_date: str) -> bool:
 
 def capture_post_url(page) -> str | None:
     """
-    Navigate to author's recent activity and grab the URL of the first post.
+    Navigate to author's recent activity and grab the URL of the most recent post.
+    Looks for /feed/update/urn:li:activity: pattern specifically.
     Returns URL string or None if not found.
     """
     try:
@@ -203,12 +205,11 @@ def capture_post_url(page) -> str | None:
         )
         page.wait_for_timeout(4000)
 
-        # Find first post link
-        link = page.query_selector("a[href*='activity']")
-        if link:
+        # Find all links and filter for the post URL pattern
+        links = page.query_selector_all("a[href*='/feed/update/']")
+        for link in links:
             href = link.get_attribute("href") or ""
-            if "activity" in href:
-                # Normalise to full URL
+            if "/feed/update/" in href and "activity" in href:
                 if href.startswith("/"):
                     href = "https://www.linkedin.com" + href
                 return href.split("?")[0]
