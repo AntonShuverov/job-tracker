@@ -315,6 +315,25 @@ def publish_post(page, text: str, photo_path: str | None = None) -> bool:
                 file_chooser = fc_info.value
                 file_chooser.set_files(photo_path)
                 log.info(f"   🖼️  Фото загружено: {os.path.basename(photo_path)}")
+
+                # LinkedIn shows "Далее" / "Next" after photo upload — click it
+                next_btn = None
+                for _ in range(20):
+                    page.wait_for_timeout(500)
+                    next_btn = (
+                        page.query_selector("button:has-text('Далее')") or
+                        page.query_selector("button:has-text('Next')")
+                    )
+                    if next_btn and not next_btn.get_attribute("disabled"):
+                        break
+                    next_btn = None
+
+                if next_btn:
+                    next_btn.click()
+                    log.info("   ➡️  Нажал 'Далее'")
+                    page.wait_for_timeout(1500)
+                else:
+                    log.warning("   ⚠️  Кнопка 'Далее' не найдена — пробую сразу публиковать")
             else:
                 log.warning("   ⚠️  Кнопка 'Добавить медиаресурс' не найдена — публикую без фото")
 
