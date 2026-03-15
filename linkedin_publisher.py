@@ -227,26 +227,34 @@ def publish_post(page, text: str) -> bool:
         page.goto("https://www.linkedin.com/feed/", wait_until="domcontentloaded", timeout=30000)
         page.wait_for_timeout(3000)
 
-        # Click "Написать пост" / "Start a post"
+        # Click "Новая публикация" / "Start a post"
+        # LinkedIn new UI uses <div role="button"> not <button>
         start_btn = (
-            page.query_selector("button.share-box-feed-entry__trigger") or
+            page.query_selector("div[role='button']:has-text('Новая публикация')") or
+            page.query_selector("div[role='button']:has-text('New post')") or
+            page.query_selector("div[role='button']:has-text('Start a post')") or
             page.query_selector("button[aria-label*='Написать пост']") or
-            page.query_selector("button[aria-label*='Start a post']") or
-            page.query_selector("div.share-box-feed-entry__top-bar button")
+            page.query_selector("button[aria-label*='Start a post']")
         )
         if not start_btn:
-            log.error("Кнопка 'Написать пост' не найдена")
+            log.error("Кнопка 'Новая публикация' не найдена")
             return False
 
         start_btn.click()
         page.wait_for_timeout(2000)
 
-        # Type into editor
-        editor = (
-            page.query_selector("div.ql-editor") or
-            page.query_selector("div[data-placeholder*='пост']") or
-            page.query_selector("div[contenteditable='true']")
-        )
+        # Wait for post editor modal to appear, then find contenteditable
+        editor = None
+        for _ in range(10):
+            editor = (
+                page.query_selector("div[contenteditable='true'][role='textbox']") or
+                page.query_selector("div.ql-editor") or
+                page.query_selector("div[contenteditable='true']")
+            )
+            if editor:
+                break
+            page.wait_for_timeout(500)
+
         if not editor:
             log.error("Редактор поста не найден")
             return False
@@ -257,11 +265,10 @@ def publish_post(page, text: str) -> bool:
 
         # Click "Опубликовать" / "Post"
         post_btn = (
-            page.query_selector("button.share-actions__primary-action") or
             page.query_selector("button[aria-label*='Опубликовать']") or
             page.query_selector("button[aria-label*='Post']") or
-            page.query_selector("button.artdeco-button--primary:has-text('Опубликовать')") or
-            page.query_selector("button.artdeco-button--primary:has-text('Post')")
+            page.query_selector("button:has-text('Опубликовать')") or
+            page.query_selector("button:has-text('Post')")
         )
         if not post_btn:
             log.error("Кнопка 'Опубликовать' не найдена")
