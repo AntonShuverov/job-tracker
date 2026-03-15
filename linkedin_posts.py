@@ -212,11 +212,27 @@ def main():
                 page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
                 page.wait_for_timeout(1800)
 
+            # Собираем URL постов из DOM (ссылки вида /feed/update/urn:li:activity:...)
+            post_urls_pool = []
+            seen_hrefs = set()
+            for link in page.query_selector_all("a[href*='/feed/update/']"):
+                href = link.get_attribute("href") or ""
+                if "activity" not in href:
+                    continue
+                if href.startswith("/"):
+                    href = "https://www.linkedin.com" + href
+                href = href.split("?")[0]
+                if href not in seen_hrefs:
+                    seen_hrefs.add(href)
+                    post_urls_pool.append(href)
+            log.info(f"   Найдено URL постов в DOM: {len(post_urls_pool)}")
+
             # Берём весь текст страницы и режем на посты
             body_text = page.inner_text("body")
             posts = split_page_into_posts(body_text)
             log.info(f"   Найдено постов: {len(posts)}")
 
+            url_idx = 0
             for post_text in posts:
                 key = post_text[:120]
                 if key in seen:
@@ -230,19 +246,22 @@ def main():
                 data = call_qwen(f"{PARSE_PROMPT}\n\nТекст поста:\n\n{post_text[:2000]}")
                 if not data or not data.get("is_vacancy"):
                     log.info("     ⏭  Не вакансия")
+                    url_idx += 1
                     continue
 
                 title = data.get("title", "?")
                 if not any(kw in title.lower() for kw in PM_KEYWORDS):
                     log.info(f"     ⏭  Не PM: «{title}»")
+                    url_idx += 1
                     continue
 
                 total_vacancies += 1
                 log.info(f"     💼 {title} @ {data.get('company', '?')}")
 
-                # URL поста — ищем в тексте ссылку lnkd.in или linkedin.com
-                urls = re.findall(r'https?://(?:lnkd\.in|www\.linkedin\.com)/\S+', post_text)
-                post_url = urls[0] if urls else f"https://www.linkedin.com/search/results/content/?keywords={encoded}"
+                # Берём LinkedIn URL из пула DOM-ссылок по индексу
+                post_url = (post_urls_pool[url_idx] if url_idx < len(post_urls_pool)
+                            else f"https://www.linkedin.com/search/results/content/?keywords={encoded}")
+                url_idx += 1
 
                 if is_duplicate(post_url, data.get("vacancy_url")):
                     log.info("     ⏭  Дубликат")
