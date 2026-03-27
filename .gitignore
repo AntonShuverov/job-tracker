@@ -17,3 +17,4 @@ test_hh_apply.py
 resume.txt
 *.log
 job_tracker_session*
+vacancy_bot/messages.db
