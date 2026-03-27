@@ -62,8 +62,11 @@ async def run_listener(db_path: str) -> None:
         tg_link = make_tg_link(username, event.id)
         channel_name = str(username or chat.id)
         try:
-            await add_message(db_path, channel_name, event.text, tg_link)
-            logger.info(f"Queued [{channel_name}]: {event.text[:60]}...")
+            result = await add_message(db_path, channel_name, event.text, tg_link)
+            if result:
+                logger.info(f"Queued [{channel_name}]: {event.text[:60]}...")
+            else:
+                logger.debug(f"Duplicate skipped [{channel_name}]")
         except Exception as e:
             logger.error(f"DB write error: {e}")
 

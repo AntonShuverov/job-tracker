@@ -22,9 +22,16 @@ async def init_db(db_path: str = DB_PATH) -> None:
         await conn.commit()
 
 
-async def add_message(db_path: str, channel: str, text: str, tg_link: str) -> int:
+async def add_message(db_path: str, channel: str, text: str, tg_link: str) -> int | None:
+    """Insert message. Returns row id, or None if tg_link already exists (dedup)."""
     now = datetime.now(timezone.utc).isoformat()
     async with aiosqlite.connect(db_path) as conn:
+        if tg_link:
+            cursor = await conn.execute(
+                "SELECT id FROM messages WHERE tg_link = ?", (tg_link,)
+            )
+            if await cursor.fetchone():
+                return None  # duplicate
         cursor = await conn.execute(
             "INSERT INTO messages (channel, text, tg_link, created_at) VALUES (?, ?, ?, ?)",
             (channel, text, tg_link, now),
