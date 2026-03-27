@@ -41,13 +41,13 @@ def make_keyboard(msg_id: int) -> InlineKeyboardMarkup:
 def format_message(row: dict) -> str:
     channel = row["channel"]
     tg_link = row.get("tg_link", "")
-    header = f"📡 {channel}"
-    if tg_link:
-        header += f"\n{tg_link}"
     text = row["text"]
     if len(text) > 3800:
         text = text[:3800] + "..."
-    return f"{header}\n\n{text}"
+    msg = f"📡 {channel}\n\n{text}"
+    if tg_link:
+        msg += f"\n\n🔗 {tg_link}"
+    return msg
 
 
 async def run_poller(db_path: str, bot: Bot) -> None:

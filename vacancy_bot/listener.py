@@ -13,7 +13,7 @@ logger = logging.getLogger("vacancy_bot")
 TELEGRAM_API_ID = int(os.getenv("TELEGRAM_API_ID", "0"))
 TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH", "")
 TG_CHANNELS = [ch.strip() for ch in os.getenv("TG_CHANNELS", "").split(",") if ch.strip()]
-SESSION_FILE = "vacancy_bot_session"
+SESSION_FILE = "../job_tracker_session"
 
 
 def make_tg_link(username: str | None, msg_id: int) -> str:
