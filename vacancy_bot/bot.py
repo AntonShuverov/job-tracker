@@ -77,6 +77,9 @@ def setup_handlers(dp: Dispatcher, db_path: str, bot: Bot) -> None:
 
     @dp.callback_query(VacancyCallback.filter(F.action == "save"))
     async def handle_save(callback: CallbackQuery, callback_data: VacancyCallback):
+        if callback.from_user.id != YOUR_CHAT_ID:
+            await callback.answer("Нет доступа", show_alert=True)
+            return
         # Must answer within 30s — do it immediately before slow Qwen/Notion calls
         await callback.answer("Сохраняю...")
         row = await get_message(db_path, callback_data.msg_id)
@@ -98,6 +101,9 @@ def setup_handlers(dp: Dispatcher, db_path: str, bot: Bot) -> None:
 
     @dp.callback_query(VacancyCallback.filter(F.action == "skip"))
     async def handle_skip(callback: CallbackQuery, callback_data: VacancyCallback):
+        if callback.from_user.id != YOUR_CHAT_ID:
+            await callback.answer("Нет доступа", show_alert=True)
+            return
         await set_skipped(db_path, callback_data.msg_id)
         await callback.answer("Пропущено")
         await callback.message.delete()
