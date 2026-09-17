@@ -6,19 +6,23 @@ from urllib.parse import quote
 
 from . import extract, pause
 
+FEED_URL = "https://www.linkedin.com/feed/"
 PERIODS = [(1, "past-24h"), (7, "past-week")]
 SHOW_MORE_RE = re.compile(r"^(Показать больше результатов|Show more results)$", re.IGNORECASE)
 NO_RESULTS_RE = re.compile(r"Результатов не найдено|Ничего не найдено|Поиск не дал результатов|No results found", re.IGNORECASE)
 
 
-def search_url(query: str, days: int) -> str:
+def search_url(query: str, days: int | None = None) -> str:
+    url = ("https://www.linkedin.com/search/results/content/?keywords=" + quote(query)
+           + "&sortBy=%22date_posted%22")
+    if days is None:
+        return url
     period = "past-month"
     for max_days, name in PERIODS:
         if days <= max_days:
             period = name
             break
-    return ("https://www.linkedin.com/search/results/content/?keywords=" + quote(query)
-            + "&sortBy=%22date_posted%22&datePosted=%22" + period + "%22")
+    return url + "&datePosted=%22" + period + "%22"
 
 
 async def collect_posts(page, max_posts: int, max_steps: int = 15) -> tuple[list[dict], str]:

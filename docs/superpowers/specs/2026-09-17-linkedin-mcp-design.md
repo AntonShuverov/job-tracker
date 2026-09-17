@@ -57,7 +57,8 @@ Claude Code ──stdio──> linkedin_mcp/server.py (MCPServer)
 | `LINKEDIN_DB_PATH` | `<repo>/linkedin.db` |
 | `LINKEDIN_HEADLESS` | `0` (окно браузера видно) |
 | `OBSIDIAN_EXPORT_PATH` | `/Users/anton/Documents/Obsidian Vault/Jobs/LinkedIn вакансии.md` |
-| `LINKEDIN_LIMIT_SEARCH` | `15` запросов поиска в день |
+| `LINKEDIN_LIMIT_SEARCH` | `30` запросов поиска в день |
+| `LINKEDIN_LIMIT_FEED` | `5` просмотров ленты в день |
 | `LINKEDIN_LIMIT_POST_OPEN` | `60` открытий поста в день |
 | `LINKEDIN_LIMIT_COMMENT` | `8` комментариев в день |
 
@@ -207,7 +208,8 @@ CREATE TABLE actions (
 | Инструмент | Что делает | Браузер |
 |---|---|---|
 | `linkedin_login()` | Открывает видимое окно на `/login`, ждёт до 5 мин URL `/feed`. Логин/пароль не принимает. | да |
-| `search_posts(query, days=7, max_posts=30)` | Поиск (раздел 5). Новые URN записывает в `posts` (`is_vacancy=NULL`). Возвращает только **ранее не виденные** посты: `[{urn, url, author, text[:1500], truncated}]` и сводку `{found, new, already_seen, strategy}`. | да |
+| `scan_feed(max_posts=30)` | Прокрутка ленты пользователя тем же извлечением (раздел 5); новые посты в `posts` с `query='feed'`; лимит `feed`. Добавлено 2026-09-17 после живого прогона: поиск с `datePosted=past-week` возвращал пустую выдачу. | да |
+| `search_posts(query, days=None, max_posts=30)` | Поиск (раздел 5). По умолчанию без `datePosted` — только «Публикации» + `sortBy=date_posted`; `days` добавляет фильтр периода. Новые URN записывает в `posts` (`is_vacancy=NULL`). Возвращает только **ранее не виденные** посты: `[{urn, url, author, text[:1500], truncated}]` и сводку `{found, new, already_seen, strategy}`. | да |
 | `get_post(urn)` | Открывает пост, берёт полный текст, обновляет `posts.text`. Лимит `post_open`. | да |
 | `list_unreviewed(limit=50)` | Посты с `is_vacancy IS NULL`. | нет |
 | `save_vacancy(urn, title, company=None, location=None, salary=None, contact=None, notes=None)` | `is_vacancy=1`, `status='new'`, обновляет экспорт. | нет |
@@ -246,7 +248,7 @@ CREATE TABLE actions (
 Команда `.claude/commands/linkedin-jobs.md` описывает для Claude порядок действий:
 
 1. `limits_status()`.
-2. `search_posts` по списку запросов (текущие 12 запросов из `linkedin_posts.py`, по одному вызову).
+2. `scan_feed`, затем `search_posts` по списку из ~30 формулировок (см. `.claude/commands/linkedin-jobs.md`), по одному вызову.
 3. Для каждого нового поста решить: вакансия продакт-роли (product manager / owner / head of product / CPO)
    или нет. Если `truncated` и неясно — `get_post`.
 4. `save_vacancy` для подходящих, `mark_not_vacancy` для остальных.
@@ -280,7 +282,7 @@ CREATE TABLE actions (
 ## 14. Критерии приёмки
 
 - [ ] `venv/bin/pytest` проходит без сети.
-- [ ] Claude Code видит сервер `linkedin`, все 12 инструментов вызываются.
+- [ ] Claude Code видит сервер `linkedin`, все 13 инструментов вызываются.
 - [ ] `linkedin_login` сохраняет вход в `browser_profile/`; после перезапуска сервера вход не требуется.
 - [ ] `search_posts("ищем продакт менеджера")` на живом аккаунте: у 10 проверенных вручную постов ссылка
       ведёт на пост с тем же текстом.

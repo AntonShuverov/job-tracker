@@ -39,6 +39,19 @@ def test_search_url():
     assert "keywords=%D0%B8%D1%89%D0%B5%D0%BC%20" in search.search_url("ищем продакта", 7)
     assert search.search_url("pm", 7).endswith("sortBy=%22date_posted%22&datePosted=%22past-week%22")
     assert search.search_url("pm", 30).endswith("datePosted=%22past-month%22")
+    no_date = search.search_url("ищем продакта")
+    assert no_date.endswith("sortBy=%22date_posted%22") and "datePosted" not in no_date
+    assert search.search_url("pm", None) == search.search_url("pm")
+
+
+async def test_feed_posts_extracted_from_data_id(page):
+    await _load(page, "feed_data_id.html")
+    posts, strategy = await extract.extract_posts(page)
+    by_urn = {p["urn"]: p for p in posts}
+    assert strategy == "container"
+    assert set(by_urn) == {"urn:li:activity:777", "urn:li:activity:888"}
+    assert by_urn["urn:li:activity:777"]["author"] == "Ольга Лента"
+    assert "продакт-менеджера" in by_urn["urn:li:activity:777"]["text"]
 
 
 async def test_collect_posts_limits(page):

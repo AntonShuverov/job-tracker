@@ -10,7 +10,7 @@ from linkedin_mcp.tests.conftest import FIXTURES
 
 TOOLS = {"linkedin_login", "search_posts", "get_post", "list_unreviewed", "save_vacancy", "mark_not_vacancy",
          "list_vacancies", "set_vacancy_status", "publish_comment", "list_comments", "limits_status",
-         "export_obsidian"}
+         "export_obsidian", "scan_feed"}
 COMMENT = "Здравствуйте! Интересна позиция продакта, 5 лет в финтехе. Буду рад пообщаться."
 
 
@@ -23,7 +23,12 @@ class FakeBrowser:
 
     async def goto(self, url):
         self.visited.append(url)
-        name = "search_tracking_scope.html" if "/search/results/" in url else "post_with_comment_box.html"
+        if "/search/results/" in url:
+            name = "search_tracking_scope.html"
+        elif url.rstrip("/").endswith("linkedin.com/feed"):
+            name = "feed_data_id.html"
+        else:
+            name = "post_with_comment_box.html"
         await self.page.set_content((FIXTURES / name).read_text(encoding="utf-8"))
         return self.page
 
@@ -56,7 +61,7 @@ class BrokenCommentBrowser(FakeBrowser):
 
 def _settings(tmp_path):
     return replace(load_settings(), db_path=tmp_path / "t.db", obsidian_path=tmp_path / "vault" / "LinkedIn.md",
-                   debug_dir=tmp_path / "debug", limits={"search": 2, "post_open": 5, "comment": 8})
+                   debug_dir=tmp_path / "debug", limits={"search": 2, "post_open": 5, "comment": 8, "feed": 2})
 
 
 async def _call(client, name, args=None):
@@ -232,3 +237,28 @@ async def test_quota_refunded_when_not_logged_in(page, tmp_path):
         assert got["error"] == "not_logged_in"
         lim = await _call(c, "limits_status")
         assert lim["search"]["used"] == 0 and lim["post_open"]["used"] == 0
+
+
+async def test_scan_feed(page, tmp_path):
+    from linkedin_mcp import db, store
+
+    s = _settings(tmp_path)
+    fake = FakeBrowser(page)
+    async with Client(build_server(s, fake)) as c:
+        res = await _call(c, "scan_feed", {})
+        assert res["source"] == "feed" and res["found"] == 2 and res["new"] == 2
+        assert {p["urn"] for p in res["posts"]} == {"urn:li:activity:777", "urn:li:activity:888"}
+        assert fake.visited[-1] == "https://www.linkedin.com/feed/"
+
+        again = await _call(c, "scan_feed", {})
+        assert again["new"] == 0 and again["already_seen"] == 2
+
+        limited = await _call(c, "scan_feed", {})
+        assert limited["error"] == "limit_reached"
+        lim = await _call(c, "limits_status")
+        assert lim["feed"]["used"] == 2 and lim["search"]["used"] == 0
+
+        res = await _call(c, "search_posts", {"query": "ищем продакта"})
+        assert "datePosted" not in fake.visited[-1]
+    with db.open_db(s.db_path) as conn:
+        assert store.get_post(conn, "urn:li:activity:777")["query"] == "feed"

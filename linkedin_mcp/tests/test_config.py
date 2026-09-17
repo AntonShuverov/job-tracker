@@ -6,7 +6,7 @@ from linkedin_mcp.config import BASE_DIR, load_settings
 def test_defaults(monkeypatch):
     for name in ("LINKEDIN_PROFILE_DIR", "LINKEDIN_DB_PATH", "LINKEDIN_HEADLESS",
                  "OBSIDIAN_EXPORT_PATH", "LINKEDIN_LIMIT_SEARCH",
-                 "LINKEDIN_LIMIT_POST_OPEN", "LINKEDIN_LIMIT_COMMENT"):
+                 "LINKEDIN_LIMIT_POST_OPEN", "LINKEDIN_LIMIT_COMMENT", "LINKEDIN_LIMIT_FEED"):
         monkeypatch.delenv(name, raising=False)
     s = load_settings()
     assert s.profile_dir == BASE_DIR / "browser_profile"
@@ -15,7 +15,7 @@ def test_defaults(monkeypatch):
     assert s.obsidian_path == Path("/Users/anton/Documents/Obsidian Vault/Jobs/LinkedIn вакансии.md")
     assert s.debug_dir == BASE_DIR / "debug"
     assert s.legacy_session == BASE_DIR / "linkedin_session.json"
-    assert s.limits == {"search": 15, "post_open": 60, "comment": 8}
+    assert s.limits == {"search": 30, "post_open": 60, "comment": 8, "feed": 5}
 
 
 def test_env_overrides(monkeypatch, tmp_path):
@@ -32,5 +32,6 @@ def test_empty_limit_env_falls_back(monkeypatch):
     monkeypatch.setenv("LINKEDIN_LIMIT_COMMENT", "")
     monkeypatch.setenv("LINKEDIN_LIMIT_SEARCH", "")
     monkeypatch.setenv("LINKEDIN_LIMIT_POST_OPEN", "")
+    monkeypatch.setenv("LINKEDIN_LIMIT_FEED", "")
     s = load_settings()
-    assert s.limits == {"search": 15, "post_open": 60, "comment": 8}
+    assert s.limits == {"search": 30, "post_open": 60, "comment": 8, "feed": 5}
