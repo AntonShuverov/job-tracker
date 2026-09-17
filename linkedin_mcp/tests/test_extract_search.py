@@ -117,3 +117,26 @@ async def test_container_prefers_activity_urn_in_tracking_scope(page):
     posts, strategy = await extract.extract_posts(page)
     assert strategy == "container"
     assert [p["urn"] for p in posts] == ["urn:li:activity:444"]
+
+
+def test_sdui_key_to_urn():
+    assert extract.sdui_key_to_urn("CgsIgIDY9OjlhaDQAQ") == "urn:li:activity:7503009723563311104"
+    assert extract.sdui_key_to_urn("EgsIgMDH3P2rmZrQAQ") == "urn:li:ugcPost:7501363860529016832"
+    assert extract.sdui_key_to_urn("not-a-key") is None
+    assert extract.sdui_key_to_urn("") is None
+
+
+async def test_sdui_strategy(page):
+    await _load(page, "search_sdui.html")
+    posts, strategy = await extract.extract_posts(page)
+    assert strategy == "sdui"
+    by_urn = {p["urn"]: p for p in posts}
+    assert list(by_urn) == ["urn:li:activity:7503009723563311104", "urn:li:ugcPost:7501363860529016832"]
+    first = by_urn["urn:li:activity:7503009723563311104"]
+    assert first["url"] == "https://www.linkedin.com/feed/update/urn:li:activity:7503009723563311104/"
+    assert first["author"] == "Автор Первый"
+    assert first["text"].startswith("Ищем продакта по малой бытовой технике")
+    assert "развернуть" not in first["text"] and first["truncated"] is True
+    second = by_urn["urn:li:ugcPost:7501363860529016832"]
+    assert second["author"] == "Компания Два"
+    assert "найме продактов" in second["text"] and second["truncated"] is False
