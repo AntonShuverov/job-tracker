@@ -1,6 +1,8 @@
 EXTRACT_JS = r"""
 () => {
   const URN_RE = /urn:li:(?:activity|ugcPost|share):\d+/;
+  const ACTIVITY_RE = /urn:li:activity:\d+/;
+  const isActivity = u => u.startsWith('urn:li:activity:');
   const TEXT_SEL = '.update-components-update-v2__commentary, .feed-shared-inline-show-more-text, .update-components-text';
   const AUTHOR_SEL = '.update-components-actor__title, .update-components-actor__name';
   const MORE_TAIL_RE = /(…|\.\.\.)\s*(ещё|еще|see more|more)\s*$/i;
@@ -54,8 +56,14 @@ EXTRACT_JS = r"""
   };
 
   for (const el of document.querySelectorAll('[data-view-tracking-scope]')) {
+    const raw = el.getAttribute('data-view-tracking-scope') || '';
     let urn = null;
-    try { urn = findUpdateUrn(JSON.parse(el.getAttribute('data-view-tracking-scope')), 0); } catch (e) {}
+    try { urn = findUpdateUrn(JSON.parse(raw), 0); } catch (e) {}
+    if (urn && !isActivity(urn)) {
+      // the same post can be referenced as ugcPost/share and activity: prefer the activity form
+      const m = raw.match(ACTIVITY_RE);
+      if (m) urn = m[0];
+    }
     accept(el, urn);
   }
   for (const el of document.querySelectorAll('[data-urn], [data-id]')) {
@@ -68,21 +76,31 @@ EXTRACT_JS = r"""
     const m = (a.getAttribute('href') || '').match(URN_RE);
     return m ? m[0] : null;
   };
+  // A post card may link to itself in several URN forms (activity + ugcPost/share). A node still
+  // belongs to a single post while it holds at most one activity URN and at most one other-form URN.
+  const urnsIn = node => new Set(Array.from(node.querySelectorAll("a[href*='urn:li:']")).map(urnOf).filter(Boolean));
+  const singlePost = urns => {
+    const list = Array.from(urns);
+    return list.filter(isActivity).length <= 1 && list.filter(u => !isActivity(u)).length <= 1;
+  };
   for (const a of document.querySelectorAll("a[href*='urn:li:']")) {
-    const urn = urnOf(a);
-    if (!urn || seen.has(urn)) continue;
+    const linkUrn = urnOf(a);
+    if (!linkUrn || seen.has(linkUrn)) continue;
     let node = a.parentElement;
     let best = null;
+    let bestUrns = null;
     while (node && node !== document.body && node.tagName !== 'MAIN') {
-      const other = Array.from(node.querySelectorAll("a[href*='urn:li:']")).some(x => {
-        const u = urnOf(x);
-        return u && u !== urn;
-      });
-      if (other) break;
+      const urns = urnsIn(node);
+      if (!singlePost(urns)) break;
       best = node;
+      bestUrns = urns;
       node = node.parentElement;
     }
-    if (best && clean(best.innerText)) accept(best, urn);
+    if (!best || !clean(best.innerText)) continue;
+    const urn = Array.from(bestUrns).find(isActivity) || linkUrn;
+    accept(best, urn);
+    // the card is one post: its other URN forms must not produce extra rows
+    if (accepted.includes(best)) for (const u of bestUrns) seen.add(u);
   }
   return { strategy: out.length ? 'links' : 'none', posts: out };
 }

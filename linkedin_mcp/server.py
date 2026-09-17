@@ -56,6 +56,13 @@ def build_server(settings: Settings, browser) -> MCPServer:
             log.exception("browser operation failed")
             return error("browser_error", f"{type(e).__name__}: {e}")
 
+    REFUND_ERRORS = ("not_logged_in", "profile_locked")
+
+    def _refund_if_unused(res: dict, kind: str) -> None:
+        if res.get("error") in REFUND_ERRORS:
+            with db.open_db(settings.db_path) as conn:
+                limits.refund(conn, kind)
+
     def _with_notice(result: dict) -> dict:
         if browser.notice and isinstance(result, dict):
             result["notice"] = browser.notice
@@ -84,6 +91,7 @@ def build_server(settings: Settings, browser) -> MCPServer:
                 return await search.run_on_page(page, max_posts, settings.debug_dir)
 
             res = await _guard(run)
+            _refund_if_unused(res, "search")
         if "error" in res:
             return _with_notice(res)
         with db.open_db(settings.db_path) as conn:
@@ -120,6 +128,7 @@ def build_server(settings: Settings, browser) -> MCPServer:
                 return found or error("post_not_parsed", "Не удалось найти текст поста на странице.")
 
             res = await _guard(run)
+            _refund_if_unused(res, "post_open")
         if "error" in res:
             return _with_notice(res)
         with db.open_db(settings.db_path) as conn:
@@ -188,6 +197,9 @@ def build_server(settings: Settings, browser) -> MCPServer:
                 await pause.sleep(wait)
             with db.open_db(settings.db_path) as conn:
                 limits.consume(conn, "comment")
+                # Committed before the browser is touched: if the call is cancelled or the process dies,
+                # this row stays 'failed'/'browser_error' and blocks blind retries (uncertain_previous_attempt).
+                attempt_id = store.start_attempt(conn, urn, text)
 
             async def run():
                 page = await browser.goto(post["url"])
@@ -202,12 +214,12 @@ def build_server(settings: Settings, browser) -> MCPServer:
                 res = {**res, "message": res.get("message", "") + " Комментарий мог быть отправлен — проверь пост вручную."}
             with db.open_db(settings.db_path) as conn:
                 if res.get("ok"):
-                    store.add_comment(conn, urn, text, "published")
+                    store.finish_attempt(conn, attempt_id, "published")
                     store.mark_commented(conn, urn)
                     warn = _export(conn)
                     return _with_notice({"ok": True, "urn": urn, "url": post["url"],
                                          **({"warning": warn} if warn else {})})
-                store.add_comment(conn, urn, text, "failed", error=code)
+                store.finish_attempt(conn, attempt_id, "failed", error=code)
         return _with_notice(res)
 
     @mcp.tool()

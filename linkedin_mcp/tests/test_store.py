@@ -92,3 +92,26 @@ def test_mark_commented_does_not_override_applied(conn):
     store.set_status(conn, "urn:li:activity:1", "applied")
     store.mark_commented(conn, "urn:li:activity:1")
     assert store.list_vacancies(conn)[0]["status"] == "applied"
+
+
+def test_attempt_lifecycle(conn):
+    store.insert_posts(conn, [_post(1), _post(2)], "q")
+    store.save_vacancy(conn, "urn:li:activity:1", "PM")
+    cid = store.start_attempt(conn, "urn:li:activity:1", "текст")
+    assert store.has_uncertain_attempt(conn, "urn:li:activity:1")
+    store.finish_attempt(conn, cid, "failed", error="submit_not_found")
+    assert not store.has_uncertain_attempt(conn, "urn:li:activity:1")
+    cid2 = store.start_attempt(conn, "urn:li:activity:1", "текст")
+    store.finish_attempt(conn, cid2, "published")
+    assert store.has_published_comment(conn, "urn:li:activity:1")
+    assert [(c["status"], c["error"]) for c in store.list_comments(conn)] == [("published", None),
+                                                                             ("failed", "submit_not_found")]
+
+
+def test_has_published_comment_for_text(conn):
+    store.insert_posts(conn, [_post(1), _post(2)], "q")
+    text = store.get_post(conn, "urn:li:activity:1")["text"]
+    assert not store.has_published_comment_for_text(conn, text)
+    store.add_comment(conn, "urn:li:activity:1", "комментарий", "published")
+    assert store.has_published_comment_for_text(conn, text)
+    assert not store.has_published_comment_for_text(conn, "другой текст")

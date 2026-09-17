@@ -68,3 +68,31 @@ async def test_read_post_page(page):
     post = await search.read_post_page(page, "urn:li:activity:333")
     assert post["author"] == "Вера Третья"
     assert await search.read_post_page(page, "urn:li:activity:999") is None
+
+
+LONG = "Ищем продакт-менеджера в команду платежей, удалёнка, опыт от трёх лет, пишите в личные сообщения."
+
+
+async def test_links_fallback_prefers_activity_over_ugcpost(page):
+    await page.set_content(f"""<main><ul>
+      <li><a href="/in/a"><span>Автор А</span></a><p>{LONG}</p>
+        <a href="/feed/update/urn:li:ugcPost:901/">пост</a>
+        <a href="/feed/update/urn:li:activity:444/">2 дн.</a></li>
+      <li><a href="/in/b"><span>Автор Б</span></a><p>Второй пост про вакансию аналитика данных, офис в Алматы, гибрид.</p>
+        <a href="/feed/update/urn:li:share:902/">пост</a>
+        <a href="/feed/update/urn:li:activity:555/">3 дн.</a></li>
+    </ul></main>""")
+    posts, strategy = await extract.extract_posts(page)
+    assert strategy == "links"
+    assert [p["urn"] for p in posts] == ["urn:li:activity:444", "urn:li:activity:555"]
+    assert "платежей" in posts[0]["text"] and "аналитика" not in posts[0]["text"]
+
+
+async def test_container_prefers_activity_urn_in_tracking_scope(page):
+    await page.set_content(f"""<main>
+      <div data-view-tracking-scope='[{{"breadcrumb":{{"updateUrn":"urn:li:ugcPost:901","content":{{"urn":"urn:li:activity:444"}}}}}}]'>
+        <div class="update-components-update-v2__commentary">{LONG}</div></div>
+    </main>""")
+    posts, strategy = await extract.extract_posts(page)
+    assert strategy == "container"
+    assert [p["urn"] for p in posts] == ["urn:li:activity:444"]

@@ -91,6 +91,24 @@ def add_comment(conn, urn: str, text: str, status: str, error: str | None = None
     return cur.lastrowid
 
 
+def start_attempt(conn, urn: str, text: str) -> int:
+    """Record a publish attempt before touching the browser. Until finish_attempt runs it counts as uncertain."""
+    return add_comment(conn, urn, text, "failed", error="browser_error")
+
+
+def finish_attempt(conn, comment_id: int, status: str, error: str | None = None) -> None:
+    conn.execute("UPDATE comments SET status = ?, error = ? WHERE id = ?", (status, error, comment_id))
+
+
+def has_published_comment_for_text(conn, text: str) -> bool:
+    if not text:
+        return False
+    return conn.execute(
+        "SELECT 1 FROM comments c JOIN posts p ON p.urn = c.urn WHERE c.status = 'published' AND p.text = ?",
+        (text,),
+    ).fetchone() is not None
+
+
 def has_published_comment(conn, urn: str) -> bool:
     return conn.execute("SELECT 1 FROM comments WHERE urn = ? AND status = 'published'", (urn,)).fetchone() is not None
 

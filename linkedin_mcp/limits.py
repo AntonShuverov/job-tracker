@@ -22,6 +22,10 @@ def consume(conn, kind: str, day: str | None = None) -> None:
     )
 
 
+def refund(conn, kind: str, day: str | None = None) -> None:
+    conn.execute("UPDATE actions SET count = MAX(count - 1, 0) WHERE date = ? AND kind = ?", (_day(day), kind))
+
+
 def status(conn, limits_cfg: dict[str, int], day: str | None = None) -> dict[str, dict]:
     out = {}
     for kind, limit in limits_cfg.items():

@@ -159,3 +159,76 @@ async def test_publish_comment_uncertain_previous_attempt(page, tmp_path, monkey
 
         log = await _call(c, "list_comments")
         assert [x["status"] for x in log] == ["failed", "failed"]
+
+
+class HangingPostBrowser(FakeBrowser):
+    """Search works; navigating to a post blocks forever so the publish can be cancelled mid-flight."""
+
+    def __init__(self, page):
+        super().__init__(page)
+        self.entered = asyncio.Event()
+
+    async def goto(self, url):
+        if "/feed/update/" in url:
+            self.entered.set()
+            await asyncio.Event().wait()
+        return await super().goto(url)
+
+
+async def test_publish_comment_cancelled_leaves_uncertain_row(page, tmp_path):
+    from linkedin_mcp import db, store
+
+    s = _settings(tmp_path)
+    fake = HangingPostBrowser(page)
+    server = build_server(s, fake)
+    async with Client(server) as c:
+        await _call(c, "search_posts", {"query": "ищем продакта"})
+        await _call(c, "save_vacancy", {"urn": "urn:li:activity:111", "title": "Product Manager"})
+
+        task = asyncio.create_task(server.call_tool("publish_comment", {"urn": "urn:li:activity:111", "text": COMMENT}))
+        await asyncio.wait_for(fake.entered.wait(), 10)
+        task.cancel()
+        try:
+            await task
+        except BaseException:
+            pass
+
+        with db.open_db(s.db_path) as conn:
+            assert store.has_uncertain_attempt(conn, "urn:li:activity:111")
+            assert not store.has_published_comment(conn, "urn:li:activity:111")
+
+        retry = await _call(c, "publish_comment", {"urn": "urn:li:activity:111", "text": COMMENT})
+        assert retry["error"] == "uncertain_previous_attempt"
+
+
+async def test_publish_comment_success_updates_attempt_row(page, tmp_path):
+    s = _settings(tmp_path)
+    async with Client(build_server(s, FakeBrowser(page))) as c:
+        await _call(c, "search_posts", {"query": "ищем продакта"})
+        await _call(c, "save_vacancy", {"urn": "urn:li:activity:111", "title": "Product Manager"})
+        ok = await _call(c, "publish_comment", {"urn": "urn:li:activity:111", "text": COMMENT})
+        assert ok["ok"] is True
+        log = await _call(c, "list_comments")
+        assert [(x["status"], x["error"]) for x in log] == [("published", None)]
+
+
+class LoggedOutBrowser(FakeBrowser):
+    async def goto(self, url):
+        from linkedin_mcp.browser import NotLoggedInError
+        raise NotLoggedInError("logged out")
+
+
+async def test_quota_refunded_when_not_logged_in(page, tmp_path):
+    from linkedin_mcp import db, store
+
+    s = _settings(tmp_path)
+    with db.open_db(s.db_path) as conn:
+        store.insert_posts(conn, [{"urn": "urn:li:activity:1", "url": "https://www.linkedin.com/feed/update/urn:li:activity:1/",
+                                   "author": "A", "text": "t"}], "q")
+    async with Client(build_server(s, LoggedOutBrowser(page))) as c:
+        res = await _call(c, "search_posts", {"query": "x"})
+        assert res["error"] == "not_logged_in"
+        got = await _call(c, "get_post", {"urn": "urn:li:activity:1"})
+        assert got["error"] == "not_logged_in"
+        lim = await _call(c, "limits_status")
+        assert lim["search"]["used"] == 0 and lim["post_open"]["used"] == 0

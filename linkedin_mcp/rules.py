@@ -15,7 +15,7 @@ def comment_precheck(conn, urn: str, text: str, comment_limit: int, confirm_not_
         return error("unknown_post", "Поста нет в базе. Сначала найди его через search_posts.")
     if post["is_vacancy"] != 1:
         return error("not_vacancy", "Комментировать можно только посты, сохранённые через save_vacancy.")
-    if store.has_published_comment(conn, urn):
+    if store.has_published_comment(conn, urn) or store.has_published_comment_for_text(conn, post["text"]):
         return error("already_commented", "Под этим постом уже есть опубликованный комментарий.")
     if store.has_uncertain_attempt(conn, urn) and not confirm_not_posted:
         return error("uncertain_previous_attempt",

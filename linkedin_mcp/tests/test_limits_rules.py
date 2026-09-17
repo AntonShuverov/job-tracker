@@ -58,3 +58,26 @@ def test_seconds_to_wait():
     assert rules.seconds_to_wait(None, now, 120) == 0
     assert rules.seconds_to_wait(now - timedelta(seconds=30), now, 120) == 90
     assert rules.seconds_to_wait(now - timedelta(seconds=500), now, 120) == 0
+
+
+def test_limits_refund(conn):
+    limits.refund(conn, "search", day="2026-09-17")
+    assert limits.used(conn, "search", day="2026-09-17") == 0
+    limits.consume(conn, "search", day="2026-09-17")
+    limits.consume(conn, "search", day="2026-09-17")
+    limits.refund(conn, "search", day="2026-09-17")
+    assert limits.used(conn, "search", day="2026-09-17") == 1
+    limits.refund(conn, "search", day="2026-09-17")
+    limits.refund(conn, "search", day="2026-09-17")
+    assert limits.used(conn, "search", day="2026-09-17") == 0
+
+
+def test_precheck_same_text_already_commented(conn):
+    _vacancy(conn)
+    other = "urn:li:ugcPost:9"
+    store.insert_posts(conn, [{"urn": other, "url": "https://www.linkedin.com/feed/update/urn:li:ugcPost:9/",
+                               "author": "A", "text": "Ищем продакта"}], "q")
+    store.save_vacancy(conn, other, "PM")
+    assert rules.comment_precheck(conn, other, GOOD, 8) is None
+    store.add_comment(conn, URN, GOOD, "published")
+    assert rules.comment_precheck(conn, other, GOOD, 8)["error"] == "already_commented"
