@@ -67,6 +67,25 @@ def test_comments_log(conn):
     assert v["status"] == "commented" and v["comment"] == "Здравствуйте! Интересна позиция"
 
 
+def test_last_attempt_at_counts_failed_rows(conn):
+    store.insert_posts(conn, [_post(1)], "q")
+    store.save_vacancy(conn, "urn:li:activity:1", "PM")
+    assert store.last_attempt_at(conn) is None
+    store.add_comment(conn, "urn:li:activity:1", "текст", "failed", error="submit_not_found")
+    assert isinstance(store.last_attempt_at(conn), datetime)
+    assert store.last_published_at(conn) is None
+
+
+def test_has_uncertain_attempt(conn):
+    store.insert_posts(conn, [_post(1)], "q")
+    store.save_vacancy(conn, "urn:li:activity:1", "PM")
+    assert not store.has_uncertain_attempt(conn, "urn:li:activity:1")
+    store.add_comment(conn, "urn:li:activity:1", "текст", "failed", error="submit_not_found")
+    assert not store.has_uncertain_attempt(conn, "urn:li:activity:1")
+    store.add_comment(conn, "urn:li:activity:1", "текст", "failed", error="not_confirmed")
+    assert store.has_uncertain_attempt(conn, "urn:li:activity:1")
+
+
 def test_mark_commented_does_not_override_applied(conn):
     store.insert_posts(conn, [_post(1)], "q")
     store.save_vacancy(conn, "urn:li:activity:1", "PM")

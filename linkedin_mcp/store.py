@@ -95,8 +95,24 @@ def has_published_comment(conn, urn: str) -> bool:
     return conn.execute("SELECT 1 FROM comments WHERE urn = ? AND status = 'published'", (urn,)).fetchone() is not None
 
 
+UNCERTAIN_ERRORS = ("not_confirmed", "browser_error")
+
+
+def has_uncertain_attempt(conn, urn: str) -> bool:
+    placeholders = ",".join("?" * len(UNCERTAIN_ERRORS))
+    return conn.execute(
+        f"SELECT 1 FROM comments WHERE urn = ? AND status = 'failed' AND error IN ({placeholders})",
+        (urn, *UNCERTAIN_ERRORS),
+    ).fetchone() is not None
+
+
 def last_published_at(conn) -> datetime | None:
     row = conn.execute("SELECT MAX(created_at) AS ts FROM comments WHERE status = 'published'").fetchone()
+    return datetime.fromisoformat(row["ts"]) if row and row["ts"] else None
+
+
+def last_attempt_at(conn) -> datetime | None:
+    row = conn.execute("SELECT MAX(created_at) AS ts FROM comments").fetchone()
     return datetime.fromisoformat(row["ts"]) if row and row["ts"] else None
 
 

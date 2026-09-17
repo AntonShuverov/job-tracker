@@ -43,6 +43,16 @@ def test_precheck_errors(conn):
     assert rules.comment_precheck(conn, URN, GOOD, 8)["error"] == "already_commented"
 
 
+def test_precheck_uncertain_previous_attempt(conn):
+    _vacancy(conn)
+    store.add_comment(conn, URN, GOOD, "failed", error="submit_not_found")
+    assert rules.comment_precheck(conn, URN, GOOD, 8) is None
+
+    store.add_comment(conn, URN, GOOD, "failed", error="not_confirmed")
+    assert rules.comment_precheck(conn, URN, GOOD, 8)["error"] == "uncertain_previous_attempt"
+    assert rules.comment_precheck(conn, URN, GOOD, 8, confirm_not_posted=True) is None
+
+
 def test_seconds_to_wait():
     now = datetime(2026, 9, 17, 12, 0, tzinfo=timezone.utc)
     assert rules.seconds_to_wait(None, now, 120) == 0
