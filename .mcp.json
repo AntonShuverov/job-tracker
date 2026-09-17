@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "linkedin": {
+      "command": "/Users/anton/job_tracker/venv/bin/python",
+      "args": ["-m", "linkedin_mcp.server"],
+      "env": { "PYTHONPATH": "/Users/anton/job_tracker" }
+    }
+  }
+}

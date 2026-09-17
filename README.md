@@ -131,3 +131,22 @@ nohup python3 run.py > run.log 2>&1 &
 ├── requirements.txt
 └── README.md
 ```
+
+---
+
+## LinkedIn MCP (Claude Code)
+
+Локальный MCP-сервер `linkedin_mcp/`: поиск вакансий в постах LinkedIn, база `linkedin.db`, комментарии, выгрузка в Obsidian.
+
+1. `venv/bin/pip install -r requirements.txt && venv/bin/playwright install chromium`
+2. Открой проект в Claude Code — сервер подключится из `.mcp.json` (подтверди подключение).
+3. Первый запуск: попроси Claude вызвать `linkedin_login` и войди в LinkedIn в открывшемся окне. Сессия хранится в `browser_profile/`.
+4. Запусти `/linkedin-jobs` (можно со своими запросами: `/linkedin-jobs ищем CPO`).
+
+Данные: `linkedin.db` (посты, вакансии, журнал комментариев, лимиты). Сводка: `OBSIDIAN_EXPORT_PATH`
+(по умолчанию `~/Documents/Obsidian Vault/Jobs/LinkedIn вакансии.md`), файл перезаписывается.
+
+Лимиты в день (`.env`): поиск 15, открытие поста 60, комментарий 8. Комментарий — только под сохранённой вакансией, один на пост, без ссылок.
+`publish_comment` требует подтверждения (`.claude/settings.json` → `permissions.ask`). Если предыдущая попытка комментария осталась неопределённой, инструмент вернёт `uncertain_previous_attempt` — нужно вручную проверить пост и повторить вызов с `confirm_not_posted=true` только после подтверждения пользователя, что комментария там нет.
+
+Тесты: `venv/bin/pytest` (без сети).
