@@ -1,4 +1,5 @@
 import os
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
@@ -51,6 +52,12 @@ def render(vacancies: list[dict], now: datetime) -> str:
 def write_export(conn, path: Path, now: datetime | None = None) -> None:
     text = render(store.list_vacancies(conn, limit=100000), now or datetime.now())
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(text, encoding="utf-8")
-    os.replace(tmp, path)
+    with tempfile.NamedTemporaryFile(dir=path.parent, delete=False, suffix=".tmp", mode="w",
+                                     encoding="utf-8") as f:
+        f.write(text)
+        tmp = Path(f.name)
+    try:
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise

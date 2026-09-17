@@ -71,11 +71,15 @@ class LinkedInBrowser:
             raise
         self._running_headless = headless
         if fresh and self.legacy_session and self.legacy_session.exists():
-            cookies = json.loads(self.legacy_session.read_text()).get("cookies", [])
-            if cookies:
-                await self._ctx.add_cookies(cookies)
-                self.notice = (f"Куки импортированы из {self.legacy_session.name} в профиль браузера. "
-                               f"Если вход работает, удали этот файл.")
+            try:
+                cookies = json.loads(self.legacy_session.read_text()).get("cookies", [])
+                if cookies:
+                    await self._ctx.add_cookies(cookies)
+                    self.notice = (f"Куки импортированы из {self.legacy_session.name} в профиль браузера. "
+                                   f"Если вход работает, удали этот файл.")
+            except Exception as e:
+                log.warning("legacy cookie import failed: %s", e)
+                self.notice = f"Не удалось импортировать куки из {self.legacy_session.name}: {e}"
         self._page = self._ctx.pages[0] if self._ctx.pages else await self._ctx.new_page()
 
     async def page(self, headed: bool = False) -> "Page":
@@ -83,6 +87,9 @@ class LinkedInBrowser:
         if self._page is not None and not self._page.is_closed():
             if not headed or self._running_headless == want_headless:
                 return self._page
+            await self.close()
+        elif self._page is not None or self._ctx is not None:
+            # the window/page was closed by the user: release the old context before relaunching
             await self.close()
         await self._start(want_headless)
         return self._page

@@ -190,3 +190,38 @@ async def test_login_already_logged_in(tmp_path):
         assert "уже" in result.get("message", "").lower()
     finally:
         await b.close()
+
+
+async def test_legacy_cookie_import_failure_is_not_fatal(tmp_path):
+    legacy = tmp_path / "linkedin_session.json"
+    legacy.write_text("{not json")
+    b = LinkedInBrowser(tmp_path / "profile", headless=True, legacy_session=legacy)
+    try:
+        page = await b.page()
+        assert page is not None and b._page is page
+        assert b.notice.startswith("Не удалось импортировать куки из linkedin_session.json:")
+    finally:
+        await b.close()
+
+
+async def test_page_restarts_after_window_closed(tmp_path):
+    b = LinkedInBrowser(tmp_path / "profile", headless=True)
+    try:
+        first = await b.page()
+        old_ctx = b._ctx
+        await first.close()
+        assert first.is_closed()
+        second = await b.page()
+        assert not second.is_closed()
+        await second.set_content("<p>ok</p>")
+        assert b._ctx is not old_ctx
+        # the previous context (still holding the profile) must have been closed, not leaked
+        try:
+            await old_ctx.new_page()
+            assert False, "old context still open"
+        except AssertionError:
+            raise
+        except Exception:
+            pass
+    finally:
+        await b.close()

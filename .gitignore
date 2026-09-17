@@ -23,3 +23,5 @@ linkedin.db
 linkedin.db-wal
 linkedin.db-shm
 debug/
+.claude/worktrees/
+.superpowers/

@@ -31,8 +31,8 @@ def load_settings() -> Settings:
         debug_dir=BASE_DIR / "debug",
         legacy_session=BASE_DIR / "linkedin_session.json",
         limits={
-            "search": int(env("LINKEDIN_LIMIT_SEARCH", "15")),
-            "post_open": int(env("LINKEDIN_LIMIT_POST_OPEN", "60")),
-            "comment": int(env("LINKEDIN_LIMIT_COMMENT", "8")),
+            "search": int(env("LINKEDIN_LIMIT_SEARCH") or "15"),
+            "post_open": int(env("LINKEDIN_LIMIT_POST_OPEN") or "60"),
+            "comment": int(env("LINKEDIN_LIMIT_COMMENT") or "8"),
         },
     )

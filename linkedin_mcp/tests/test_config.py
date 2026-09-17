@@ -26,3 +26,11 @@ def test_env_overrides(monkeypatch, tmp_path):
     assert s.db_path == tmp_path / "x.db"
     assert s.headless is True
     assert s.limits["comment"] == 3
+
+
+def test_empty_limit_env_falls_back(monkeypatch):
+    monkeypatch.setenv("LINKEDIN_LIMIT_COMMENT", "")
+    monkeypatch.setenv("LINKEDIN_LIMIT_SEARCH", "")
+    monkeypatch.setenv("LINKEDIN_LIMIT_POST_OPEN", "")
+    s = load_settings()
+    assert s.limits == {"search": 15, "post_open": 60, "comment": 8}
