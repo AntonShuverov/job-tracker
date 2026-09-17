@@ -1,0 +1,36 @@
+<!doctype html>
+<html><body>
+<aside>
+  <div class="other-post"><p>Чужой пост в сайдбаре</p><button id="other-comment">Комментировать</button></div>
+</aside>
+<main>
+  <div data-view-tracking-scope='[{"breadcrumb":{"updateUrn":"urn:li:activity:111"}}]'>
+    <div class="update-components-update-v2__commentary">Ищем продакт-менеджера в команду платежей.</div>
+    <div class="social"><button id="open">Комментировать</button></div>
+    <form id="box" style="display:none" onsubmit="return false">
+      <div id="editor" contenteditable="true" role="textbox"></div>
+      <button id="submit" type="button" disabled>Комментировать</button>
+    </form>
+    <section class="comments-list"></section>
+  </div>
+</main>
+<script>
+  window.BROKEN = false;
+  window.otherClicked = false;
+  document.getElementById('other-comment').onclick = () => { window.otherClicked = true; };
+  const editor = document.getElementById('editor');
+  const submit = document.getElementById('submit');
+  document.getElementById('open').onclick = () => { document.getElementById('box').style.display = 'block'; };
+  editor.addEventListener('input', () => { submit.disabled = editor.innerText.trim().length === 0; });
+  submit.onclick = () => {
+    if (window.BROKEN) return;
+    const item = document.createElement('article');
+    item.className = 'comments-comment-item';
+    item.innerHTML = '<span dir="ltr"></span>';
+    item.firstChild.textContent = editor.innerText;
+    document.querySelector('.comments-list').appendChild(item);
+    editor.innerText = '';
+    submit.disabled = true;
+  };
+</script>
+</body></html>
