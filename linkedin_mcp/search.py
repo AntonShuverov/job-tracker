@@ -8,7 +8,7 @@ from . import extract, pause
 
 PERIODS = [(1, "past-24h"), (7, "past-week")]
 SHOW_MORE_RE = re.compile(r"^(Показать больше результатов|Show more results)$", re.IGNORECASE)
-NO_RESULTS_RE = re.compile(r"Результатов не найдено|Ничего не найдено|No results found", re.IGNORECASE)
+NO_RESULTS_RE = re.compile(r"Результатов не найдено|Ничего не найдено|Поиск не дал результатов|No results found", re.IGNORECASE)
 
 
 def search_url(query: str, days: int) -> str:

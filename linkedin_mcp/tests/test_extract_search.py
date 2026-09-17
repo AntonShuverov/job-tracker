@@ -63,6 +63,14 @@ async def test_run_on_page_no_results_no_warning(page, tmp_path):
     assert list(tmp_path.iterdir()) == []
 
 
+async def test_run_on_page_linkedin_empty_search_no_warning(page, tmp_path):
+    await page.set_content("<main>" + "Навигация. " * 40 + "<h2>Поиск не дал результатов</h2>"
+                           "<p>Попробуйте удалить фильтры или перефразировать свой поисковый запрос.</p></main>")
+    res = await search.run_on_page(page, 30, tmp_path)
+    assert res["posts"] == [] and "warning" not in res
+    assert list(tmp_path.iterdir()) == []
+
+
 async def test_read_post_page(page):
     await _load(page, "search_tracking_scope.html")
     post = await search.read_post_page(page, "urn:li:activity:333")
