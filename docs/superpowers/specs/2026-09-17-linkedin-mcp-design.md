@@ -28,7 +28,7 @@
 ## 3. Архитектура
 
 ```
-Claude Code ──stdio──> linkedin_mcp/server.py (FastMCP)
+Claude Code ──stdio──> linkedin_mcp/server.py (MCPServer)
                           │
                           ├── browser.py  ── Playwright async, persistent-профиль browser_profile/
                           ├── extract.py  ── JS-извлечение постов (URN + текст + автор из одного контейнера)
@@ -39,8 +39,8 @@ Claude Code ──stdio──> linkedin_mcp/server.py (FastMCP)
 ```
 
 - Пакет `linkedin_mcp/` в корне репозитория.
-- Библиотеки: официальный `mcp` (`mcp.server.fastmcp.FastMCP`), `playwright.async_api`, стандартный `sqlite3`.
-  Sync API Playwright не используем: инструменты FastMCP выполняются внутри asyncio-цикла.
+- Библиотеки: официальный `mcp` (`mcp.server.mcpserver.MCPServer`), `playwright.async_api`, стандартный `sqlite3`.
+  Sync API Playwright не используем: инструменты MCPServer выполняются внутри asyncio-цикла.
 - Транспорт только `stdio`. Сетевой порт не открывается.
 - Все пути считаются от каталога пакета (`BASE_DIR = корень репозитория`), не от cwd.
 - Логи только в stderr (stdout занят протоколом MCP).
@@ -275,7 +275,7 @@ CREATE TABLE actions (
 
 ## 13. Зависимости
 
-В `requirements.txt` добавить: `mcp>=1.2.0`, `pytest-asyncio>=0.23`.
+В `requirements.txt` добавить: `mcp>=2.2,<3`, `pytest-asyncio>=0.23`.
 
 ## 14. Критерии приёмки
 

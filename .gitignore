@@ -18,3 +18,8 @@ resume.txt
 *.log
 job_tracker_session*
 vacancy_bot/messages.db
+browser_profile/
+linkedin.db
+linkedin.db-wal
+linkedin.db-shm
+debug/
