@@ -16,7 +16,7 @@ log = logging.getLogger("linkedin_mcp.browser")
 FEED_URL = "https://www.linkedin.com/feed/"
 LOGIN_URL = "https://www.linkedin.com/login"
 LOCK_MARKERS = ("processsingleton", "singletonlock", "profile is already in use", "user data directory is already in use")
-LOGGED_OUT_PATH_RE = re.compile(r"^https?://[^/]+/(authwall|login|uas/login|checkpoint|signup)", re.IGNORECASE)
+LOGGED_OUT_PATH_RE = re.compile(r"^https?://[^/]+/(authwall|login|uas/login|checkpoint|signup)(?:[/?#]|$)", re.IGNORECASE)
 
 
 class ProfileLockedError(RuntimeError):
